@@ -218,30 +218,17 @@ function LoginForm({
       let json;
       const apiUrl = getApiUrl('/api/v1/auth/login');
       
-      if (apiUrl.startsWith('http://localhost') || (import.meta as any).env?.VITE_API_URL) {
-        const res = await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: email.trim(), password }),
-        });
-        json = await res.json();
-        if (!res.ok) {
-          const errorMsg = json.errors?.[0]?.message || 'Invalid email or password';
-          showToast(errorMsg);
-          setLoading(false);
-          return;
-        }
-      } else {
-        // Fallback demo auth response for deployed preview frontend
-        const role = email.includes('owner') ? 'owner' : email.includes('vendor') ? 'vendor' : email.includes('admin') ? 'admin' : email.includes('trust') ? 'trust' : 'pm';
-        json = {
-          data: {
-            user: { email, name: email.split('@')[0].toUpperCase(), role },
-            accessToken: 'demo_token_' + Date.now(),
-            refreshToken: 'demo_refresh_' + Date.now(),
-            activeContext: { portal: role },
-          },
-        };
+      const res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      json = await res.json();
+      if (!res.ok) {
+        const errorMsg = json.errors?.[0]?.message || 'Invalid email or password';
+        showToast(errorMsg);
+        setLoading(false);
+        return;
       }
 
       const { user, accessToken, refreshToken, activeContext, availableWorkspaces } = json.data;
