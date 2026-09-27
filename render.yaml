@@ -4,7 +4,7 @@ services:
     runtime: node
     region: oregon
     plan: free
-    buildCommand: npm install && npm run build --workspace=backend && npm run db:migrate
+    buildCommand: npm install --include=dev && npm run build --workspace=backend && npm run db:migrate
     startCommand: npm run start --workspace=backend
     healthCheckPath: /api/v1/health
     envVars:
