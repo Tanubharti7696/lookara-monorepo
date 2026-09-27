@@ -2,7 +2,7 @@
 // Central API base — reads from VITE_API_URL env var in production,
 // falls back to local backend in development.
 
-export const API_BASE = "https://lookara-backend-uqhc.onrender.com/api/v1";
+export const API_BASE = "https://lookara-backend-uqhc.onrender.com";
 
 /**
  * Authenticated fetch wrapper — automatically attaches the JWT token.

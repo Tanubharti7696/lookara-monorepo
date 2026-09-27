@@ -15,7 +15,7 @@ export interface LookaraUser {
   organizationName?: string;
 }
 
-export const API_BASE = "https://lookara-backend-uqhc.onrender.com/api/v1";
+export const API_BASE = "https://lookara-backend-uqhc.onrender.com";
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
