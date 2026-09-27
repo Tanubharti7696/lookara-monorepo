@@ -195,7 +195,7 @@ function LoginForm({
 
   const getApiUrl = (endpoint: string) => {
     const metaEnv = (import.meta as any).env;
-    const baseUrl = "https://lookara-backend-uqhc.onrender.com/api/v1";
+    const baseUrl = "https://lookara-backend-uqhc.onrender.com";
     return `${baseUrl}${endpoint}`;
   };
 
