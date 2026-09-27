@@ -180,13 +180,13 @@ function LoginForm({
   const redirectUser = (portal: string, token: string) => {
     const metaEnv = (import.meta as any).env;
     const PORTAL_URLS: Record<string, string> = {
-      pm: metaEnv?.VITE_PM_PORTAL_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5175' : 'https://lookara-monorepo-pm-portal-6fb3.vercel.app'),
+      pm: metaEnv?.VITE_PM_PORTAL_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5175' : 'https://lookara-monorepo-pm-portal-bu6k.vercel.app'),
       owner: metaEnv?.VITE_OWNER_PORTAL_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5174' : 'https://owner-portal-three.vercel.app'),
       vendor: metaEnv?.VITE_VENDOR_PORTAL_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5176' : 'https://vendor-portal-two-nu.vercel.app'),
       admin: metaEnv?.VITE_ADMIN_PORTAL_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5177' : 'https://admin-portal-nu-drab.vercel.app'),
       trust: metaEnv?.VITE_TRUST_PORTAL_URL || (window.location.hostname === 'localhost' ? 'http://localhost:5178' : 'https://trust-portal-ebon.vercel.app'),
     };
-    const targetUrl = PORTAL_URLS[portal] || (window.location.hostname === 'localhost' ? 'http://localhost:5175' : 'https://lookara-monorepo-pm-portal-6fb3.vercel.app');
+    const targetUrl = PORTAL_URLS[portal] || (window.location.hostname === 'localhost' ? 'http://localhost:5175' : 'https://lookara-monorepo-pm-portal-bu6k.vercel.app');
     showToast('Redirecting to your workspace…');
     setTimeout(() => {
       window.location.href = `${targetUrl}?token=${encodeURIComponent(token)}`;
