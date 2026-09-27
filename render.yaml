@@ -5,7 +5,7 @@ services:
     region: oregon
     plan: free
     buildCommand: npm install --include=dev && npm run build --workspace=@lookara/auth --workspace=@lookara/database --workspace=backend && npm run db:migrate
-    startCommand: npm run start --workspace=backend
+    startCommand: npm run start:prod --workspace=backend
     healthCheckPath: /api/v1/health
     envVars:
       - key: NODE_ENV
