@@ -19,4 +19,4 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: CORS_ORIGINS
-        value: "*"
+        value: ""
