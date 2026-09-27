@@ -15,7 +15,7 @@ export interface LookaraUser {
   organizationName?: string;
 }
 
-export const API_BASE = import.meta.env.VITE_API_URL || 'https://deploy-eight-blush-92.vercel.app';
+export const API_BASE = "https://lookara-backend-uqhc.onrender.com/api/v1";
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);

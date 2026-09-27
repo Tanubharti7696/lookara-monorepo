@@ -195,7 +195,7 @@ function LoginForm({
 
   const getApiUrl = (endpoint: string) => {
     const metaEnv = (import.meta as any).env;
-    const baseUrl = metaEnv?.VITE_API_URL || (window.location.hostname === 'localhost' ? 'http://localhost:3001' : '');
+    const baseUrl = "https://lookara-backend-uqhc.onrender.com/api/v1";
     return `${baseUrl}${endpoint}`;
   };
 
