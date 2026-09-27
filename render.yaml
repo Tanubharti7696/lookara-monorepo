@@ -19,4 +19,4 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: CORS_ORIGINS
-        value: https://lookara-public.vercel.app,https://lookara-pm.vercel.app,https://lookara-owner.vercel.app,https://lookara-vendor.vercel.app,https://lookara-admin.vercel.app
+        value: "*"
