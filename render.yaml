@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: lookara-backend
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: npm install && npm run build --workspaces --if-present && npm run db:migrate
+    startCommand: npm run start --workspace=backend
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        sync: false   # Set this in Render dashboard → your Neon connection string
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://lookara-public.vercel.app,https://lookara-pm.vercel.app,https://lookara-owner.vercel.app,https://lookara-vendor.vercel.app,https://lookara-admin.vercel.app

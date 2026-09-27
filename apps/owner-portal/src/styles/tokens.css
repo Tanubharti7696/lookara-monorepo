@@ -1,0 +1,45 @@
+/* apps/owner-portal/src/styles/tokens.css */
+:root {
+  /* Brand */
+  --gold: #d4af37;
+  --gold-hover: #e6c158;
+  --gold-active: #b8962e;
+
+  /* Surfaces */
+  --black: #0b0d10;
+  --charcoal: #14171c;
+  --graphite: #1b1f26;
+  --card-hover: #1f2430;
+
+  /* Text */
+  --text-primary: #ffffff;
+  --text-secondary: #a6b0bd;
+  --text-muted: #6b7280;
+
+  /* Lines */
+  --border: #2a2f38;
+  --border-strong: #3a3f4a;
+
+  /* Semantic */
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #dc2626;
+  --info: #3b82f6;
+
+  /* Type */
+  --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-serif: 'DM Serif Display', Georgia, serif;
+
+  /* Radii */
+  --radius-sm: 5px;
+  --radius: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+
+  /* Layout */
+  --sidebar-w: 220px;
+  --topbar-h: 58px;
+
+  color-scheme: dark;
+}

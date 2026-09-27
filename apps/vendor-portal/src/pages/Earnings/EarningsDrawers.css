@@ -1,0 +1,176 @@
+/* apps/vendor-portal/src/pages/Earnings/EarningsDrawers.css */
+
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 200;
+  animation: fade-in .2s ease;
+}
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+
+.drawer {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: 440px;
+  max-width: 100%;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+  animation: slide-in .22s cubic-bezier(.4,0,.2,1);
+}
+@keyframes slide-in { from { transform: translateX(100%) } to { transform: translateX(0) } }
+
+.drawer-hdr {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 12px;
+}
+.dh-title {
+  font-family: var(--font-d);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.dh-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.dh-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-m);
+}
+.dh-close {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 16px;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+.dh-close:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.drawer-foot {
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ds-block {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.ds-block-title {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  font-family: var(--font-m);
+  border-bottom: 1px solid var(--border);
+}
+.ds-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  gap: 12px;
+}
+.ds-row:last-child { border-bottom: none; }
+.ds-lbl { font-size: 11px; color: var(--text-muted); }
+.ds-val { font-size: 12px; font-weight: 600; font-family: var(--font-m); text-align: right; }
+.ds-val.gold  { color: var(--gold); }
+.ds-val.green { color: var(--emerald); }
+.ds-val.amber { color: var(--amber); }
+
+.drawer-note {
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.drawer-note.is-amber { background: var(--amber-dim); border: 1px solid var(--amber-border); color: var(--amber); }
+.drawer-note.is-blue  { background: var(--blue-dim);  border: 1px solid var(--blue-border);  color: var(--blue); }
+
+.btn-prim {
+  flex: 1;
+  padding: 9px 16px;
+  background: var(--gold-dim);
+  border: 1px solid var(--gold-border);
+  border-radius: var(--r-sm);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-m);
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  transition: all .14s;
+}
+.btn-prim:hover { background: rgba(212,175,55,.2); }
+.btn-sec {
+  flex: 1;
+  padding: 9px 16px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .14s;
+  font-family: inherit;
+}
+.btn-sec:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.btn-sec.full { flex: 1; }
+.btn-sec.btn-crimson { background: var(--crimson-dim); border-color: var(--crimson-border); color: var(--crimson); }
+
+.rr-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-m);
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+.chip-paid     { background: var(--emerald-dim); color: var(--emerald); }
+.chip-awaiting { background: var(--slate-dim);   color: var(--slate); }
+.chip-pending  { background: var(--blue-dim);    color: var(--blue); }
+.chip-delayed  { background: var(--amber-dim);   color: var(--amber); }
+.chip-disputed { background: var(--crimson-dim); color: var(--crimson); }
+
+@media (max-width: 768px) {
+  .drawer { width: 100%; }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "lookara-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "start": "echo 'Run workspace scripts'",
+    "dev": "npm run dev --workspace=public-portal",
+    "dev:all": "npm run dev --workspaces --if-present",
+    "dev:backend": "npm run start --workspace=backend",
+    "dev:owner": "npm run dev --workspace=@lookara/owner-portal",
+    "db:start": "npm run db:start --workspace=@lookara/database",
+    "db:migrate": "npm run db:migrate --workspace=@lookara/database",
+    "db:seed": "npm run db:seed --workspace=@lookara/database",
+    "db:init": "npm run db:init --workspace=@lookara/database",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "react-router-dom": "^7.18.4"
+  }
+}

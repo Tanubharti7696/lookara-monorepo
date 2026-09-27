@@ -1,0 +1,297 @@
+/* apps/public-portal/src/pages/EmailVerification/EmailVerification.css */
+
+.ev-page {
+  --crimson-ev: #EF4444;
+  --crimson-dim: rgba(239,68,68,0.1);
+  --crimson-border: rgba(239,68,68,0.25);
+  --success-dim: rgba(34,197,94,0.12);
+  --success-border: rgba(34,197,94,0.25);
+  --warning-ev: #F59E0B;
+  --warning-dim: rgba(245,158,11,0.1);
+  --warning-border: rgba(245,158,11,0.25);
+  --indigo-ev: #6366f1;
+  --indigo-dim: rgba(99,102,241,0.1);
+  --indigo-border: rgba(99,102,241,0.25);
+  background: var(--charcoal);
+  color: var(--white);
+  min-height: 100vh;
+  font-family: 'Inter', -apple-system, sans-serif;
+  line-height: 1.6;
+  letter-spacing: -0.01em;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem 3rem;
+}
+
+/* ═══════════ LOGO ═══════════ */
+.ev-logo-wrap {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 1.125rem; font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.375rem;
+}
+.ev-logo-mark {
+  width: 24px; height: 24px;
+  position: relative;
+  flex-shrink: 0;
+}
+.ev-logo-mark::before {
+  content: '';
+  position: absolute;
+  width: 100%; height: 100%;
+  border: 2px solid var(--champagne-gold);
+  border-radius: 5px;
+  transform: rotate(45deg);
+}
+.ev-logo-mark::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 6px; height: 6px;
+  background: var(--champagne-gold);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 10px var(--champagne-gold);
+}
+.ev-logo-sub {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--slate);
+  margin-bottom: 2.5rem;
+  text-align: center;
+}
+
+/* ═══════════ SCREEN ═══════════ */
+.ev-screen {
+  width: 100%;
+  max-width: 460px;
+}
+
+/* ═══════════ CARD ═══════════ */
+.ev-card {
+  background: var(--charcoal-light);
+  border: 1px solid var(--white-faint);
+  border-radius: 16px;
+  padding: 2.5rem;
+  text-align: center;
+  position: relative;
+}
+.ev-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  border-radius: 16px 16px 0 0;
+}
+.ev-card--gold::before    { background: linear-gradient(90deg, var(--champagne-gold), transparent); }
+.ev-card--green::before   { background: linear-gradient(90deg, var(--success), transparent); }
+.ev-card--red::before     { background: linear-gradient(90deg, var(--crimson-ev), transparent); }
+.ev-card--amber::before   { background: linear-gradient(90deg, var(--warning-ev), transparent); }
+.ev-card--indigo::before  { background: linear-gradient(90deg, var(--indigo-ev), transparent); }
+
+/* ═══════════ ICON CIRCLE ═══════════ */
+.ev-icon-circle {
+  width: 72px; height: 72px;
+  border-radius: 50%;
+  margin: 0 auto 1.75rem;
+  display: flex; align-items: center; justify-content: center;
+}
+.ev-icon-circle svg { width: 32px; height: 32px; }
+.ev-icon-circle--gold {
+  background: var(--champagne-gold-subtle);
+  border: 1px solid var(--champagne-gold-dim);
+}
+.ev-icon-circle--gold svg { color: var(--champagne-gold); }
+.ev-icon-circle--green {
+  background: var(--success-dim);
+  border: 1px solid var(--success-border);
+}
+.ev-icon-circle--green svg { color: var(--success); }
+.ev-icon-circle--red {
+  background: var(--crimson-dim);
+  border: 1px solid var(--crimson-border);
+}
+.ev-icon-circle--red svg { color: var(--crimson-ev); }
+.ev-icon-circle--amber {
+  background: var(--warning-dim);
+  border: 1px solid var(--warning-border);
+}
+.ev-icon-circle--amber svg { color: var(--warning-ev); }
+.ev-icon-circle--indigo {
+  background: var(--indigo-dim);
+  border: 1px solid var(--indigo-border);
+}
+.ev-icon-circle--indigo svg { color: var(--indigo-ev); }
+
+/* ═══════════ TYPE ═══════════ */
+.ev-card-title {
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.75rem;
+}
+.ev-card-sub {
+  font-size: 0.9375rem;
+  color: var(--slate);
+  line-height: 1.65;
+  margin-bottom: 1.5rem;
+}
+
+.ev-email-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--slate);
+  margin-bottom: 0.375rem;
+}
+.ev-email-display {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--white);
+  margin-bottom: 1.25rem;
+}
+
+/* ═══════════ STATUS / SPINNER ═══════════ */
+.ev-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  color: var(--slate);
+  margin-bottom: 1.75rem;
+}
+.ev-spinner {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--white-faint);
+  border-top-color: var(--champagne-gold);
+  animation: ev-spin 0.9s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes ev-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ═══════════ BUTTONS ═══════════ */
+.ev-btn-primary {
+  width: 100%;
+  padding: 0.875rem;
+  background: linear-gradient(135deg, var(--champagne-gold) 0%, #C9A227 100%);
+  border: none;
+  border-radius: 8px;
+  color: var(--charcoal);
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  margin-top: 0.75rem;
+  display: flex; align-items: center; justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.ev-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px var(--champagne-gold-dim);
+}
+.ev-btn-primary svg { width: 16px; height: 16px; }
+
+.ev-btn-secondary {
+  width: 100%;
+  padding: 0.75rem;
+  background: transparent;
+  border: 1px solid var(--white-faint);
+  border-radius: 8px;
+  color: var(--white-dim);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-top: 0.75rem;
+  display: flex; align-items: center; justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+.ev-btn-secondary:hover:not(:disabled) {
+  border-color: var(--champagne-gold-dim);
+  color: var(--champagne-gold);
+}
+.ev-btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: var(--white-faint);
+  color: var(--slate);
+}
+.ev-btn-secondary svg { width: 16px; height: 16px; }
+
+.ev-btn-text {
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--slate);
+  margin-top: 1.125rem;
+  display: block;
+  width: 100%;
+  text-align: center;
+  cursor: pointer;
+  transition: color 0.2s;
+  text-decoration: none;
+}
+.ev-btn-text:hover { color: var(--champagne-gold); }
+
+/* ═══════════ MISC ═══════════ */
+.ev-divider {
+  height: 1px;
+  background: var(--white-faint);
+  margin: 1.5rem 0;
+}
+.ev-countdown {
+  font-size: 0.75rem;
+  color: var(--slate);
+  margin-top: 0.5rem;
+}
+.ev-resend-hint {
+  font-size: 0.8125rem;
+  color: var(--slate);
+  margin-bottom: 0.75rem;
+}
+.ev-spam-hint {
+  font-size: 0.8125rem;
+  color: var(--slate);
+  margin-top: 1rem;
+  line-height: 1.6;
+}
+
+/* ═══════════ DEV SWITCHER ═══════════ */
+.ev-dev {
+  position: fixed;
+  bottom: 1rem; right: 1rem;
+  z-index: 9999;
+  display: flex; flex-direction: column;
+  gap: 0.375rem;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+.ev-dev:hover { opacity: 1; }
+.ev-dev button {
+  font-size: 0.6875rem;
+  padding: 0.25rem 0.625rem;
+  background: var(--charcoal-lighter);
+  border: 1px solid var(--white-faint);
+  border-radius: 4px;
+  color: var(--slate);
+  cursor: pointer;
+  font-family: inherit;
+}
+.ev-dev button:hover { color: var(--white-dim); }
+
+/* ═══════════ RESPONSIVE ═══════════ */
+@media (max-width: 480px) {
+  .ev-card { padding: 2rem 1.25rem; }
+}

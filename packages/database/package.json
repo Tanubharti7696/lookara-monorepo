@@ -1,0 +1,26 @@
+{
+  "name": "@lookara/database",
+  "version": "1.0.0",
+  "description": "Lookara PostgreSQL database foundation and migrations",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "db:start": "node scripts/start-db.js",
+    "db:migrate": "node scripts/migrate.js",
+    "db:seed": "node scripts/seed.js",
+    "db:init": "node scripts/migrate.js && node scripts/seed.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/pg": "^8.11.11",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "pg": "^8.13.3"
+  }
+}

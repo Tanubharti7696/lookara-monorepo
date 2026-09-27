@@ -1,0 +1,102 @@
+/* apps/vendor-portal/src/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+
+:root {
+  --bg-main:        #0B0D10;
+  --bg-surface:     #14171C;
+  --bg-elevated:    #1A1E25;
+  --bg-hover:       #22272F;
+
+  --gold:           #D4AF37;
+  --gold-dim:       rgba(212,175,55,0.10);
+  --gold-border:    rgba(212,175,55,0.25);
+
+  --crimson:        #DC2626;
+  --crimson-dim:    rgba(220,38,38,0.10);
+  --crimson-border: rgba(220,38,38,0.25);
+
+  --emerald:        #10B981;
+  --emerald-dim:    rgba(16,185,129,0.10);
+  --emerald-border: rgba(16,185,129,0.25);
+
+  --amber:          #F59E0B;
+  --amber-dim:      rgba(245,158,11,0.10);
+  --amber-border:   rgba(245,158,11,0.25);
+
+  --blue:           #3B82F6;
+  --blue-dim:       rgba(59,130,246,0.10);
+  --blue-border:    rgba(59,130,246,0.25);
+
+  --border:         rgba(255,255,255,0.07);
+  --border-strong:  rgba(255,255,255,0.14);
+
+  --text-primary:   #F1F3F6;
+  --text-secondary: #A0A8B4;
+  --text-muted:     #5A6270;
+
+  --font-d: 'Rajdhani', sans-serif;
+  --font-b: 'Inter', sans-serif;
+  --font-m: 'JetBrains Mono', monospace;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  background: var(--bg-main);
+  color: var(--text-primary);
+  font-family: var(--font-b);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a, a:visited { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+ul, ol { list-style: none; }
+svg { display: inline-block; vertical-align: middle; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+
+/* ── Toast ── */
+.v-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--gold);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+  z-index: 9999;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .22s ease, transform .22s ease;
+}
+.v-toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+.v-toast.tone-success { border-left-color: var(--emerald); }
+.v-toast.tone-danger  { border-left-color: var(--crimson); }
+.v-toast.tone-warn    { border-left-color: var(--amber); }
+.v-toast.tone-emg     { border-left-color: var(--crimson); background: rgba(220,38,38,0.14); }
+
+/* ── Shared icons ── */
+.sb-nav-ic { width: 15px; height: 15px; opacity: .7; flex-shrink: 0; }
+.nav-item.active .sb-nav-ic { opacity: 1; }

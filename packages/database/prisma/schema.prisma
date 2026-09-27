@@ -1,0 +1,495 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Identity / RBAC
+// ----------------------------------------------------------------------------
+
+model Organization {
+  id                  String               @id @default(uuid())
+  name                String
+  slug                String               @unique
+  status              String               // active, limited, suspended
+  city                String?
+  state               String?
+  country             String?              @default("US")
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  
+  properties          Property[]
+  users               OrganizationUser[]
+  vendors             OrganizationVendor[]
+  jobs                Job[]
+  incidents           Incident[]
+  approvals           Approval[]
+  disputes            Dispute[]
+  flags               Flag[]
+}
+
+model Property {
+  id                  String               @id @default(uuid())
+  organizationId      String
+  name                String
+  code                String?
+  addressLine1        String?
+  addressLine2        String?
+  city                String
+  state               String
+  postalCode          String?
+  country             String?              @default("US")
+  latitude            Float?
+  longitude           Float?
+  timezone            String               @default("America/New_York")
+  status              String               // active, inactive
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  organization        Organization         @relation(fields: [organizationId], references: [id])
+  owners              PropertyOwner[]
+  jobs                Job[]
+  incidents           Incident[]
+  approvals           Approval[]
+  flags               Flag[]
+}
+
+model User {
+  id                  String               @id @default(uuid())
+  fullName            String
+  email               String               @unique
+  phone               String?
+  avatarUrl           String?
+  accountStatus       String               // active, invited, disabled
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  organizationUsers   OrganizationUser[]
+  vendor              Vendor?
+  owner               Owner?
+  notifications       Notification[]
+  auditEvents         AuditEvent[]
+  timelineEvents      TimelineEvent[]
+}
+
+model OrganizationUser {
+  id                  String               @id @default(uuid())
+  organizationId      String
+  userId              String
+  role                String               // owner, admin, ops_manager, coordinator, viewer
+  status              String               // active, invited, disabled
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  organization        Organization         @relation(fields: [organizationId], references: [id])
+  user                User                 @relation(fields: [userId], references: [id])
+
+  @@unique([organizationId, userId])
+}
+
+model Owner {
+  id                  String               @id @default(uuid())
+  userId              String               @unique
+  status              String               // active, invited, disabled
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  user                User                 @relation(fields: [userId], references: [id])
+  properties          PropertyOwner[]
+  approvals           Approval[]
+}
+
+model PropertyOwner {
+  id                  String               @id @default(uuid())
+  propertyId          String
+  ownerId             String
+  relationshipStatus  String               // active, inactive
+  createdAt           DateTime             @default(now())
+
+  property            Property             @relation(fields: [propertyId], references: [id])
+  owner               Owner                @relation(fields: [ownerId], references: [id])
+
+  @@unique([propertyId, ownerId])
+}
+
+// ----------------------------------------------------------------------------
+// Vendors
+// ----------------------------------------------------------------------------
+
+model Vendor {
+  id                  String               @id @default(uuid())
+  userId              String?              @unique
+  businessName        String?
+  displayName         String
+  vendorType          String               // individual, company
+  primaryTrade        String?
+  city                String?
+  state               String?
+  country             String?              @default("US")
+  maxRadiusMiles      Int?
+  lifecycleStatus     String               // invited, onboarding, active, limited, blocked, suspended
+  lifecycleReason     String?
+  emergencyEnabled    Boolean              @default(false)
+  acceptsNewJobs      Boolean              @default(true)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  user                User?                @relation(fields: [userId], references: [id])
+  trades              VendorTrade[]
+  coverageZones       VendorCoverageZone[]
+  availability        VendorAvailability[]
+  organizationVendors OrganizationVendor[]
+  documents           VendorDocument[]
+  jobOffers           JobOffer[]
+  jobAssignments      JobAssignment[]
+  flags               Flag[]
+  disputes            Dispute[]
+}
+
+model VendorTrade {
+  id                      String               @id @default(uuid())
+  vendorId                String
+  tradeCode               String
+  isPrimaryIdentityTrade  Boolean              @default(false)
+  eligibilityStatus       String               // active, limited, blocked
+  eligibilityReason       String?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  vendor                  Vendor               @relation(fields: [vendorId], references: [id])
+  skills                  VendorSkill[]
+  documents               VendorDocument[]
+
+  @@unique([vendorId, tradeCode])
+}
+
+model VendorSkill {
+  id                  String               @id @default(uuid())
+  vendorTradeId       String
+  skillCode           String
+  skillPriority       String               // primary, secondary
+  createdAt           DateTime             @default(now())
+
+  vendorTrade         VendorTrade          @relation(fields: [vendorTradeId], references: [id])
+
+  @@unique([vendorTradeId, skillCode])
+}
+
+model VendorCoverageZone {
+  id                  String               @id @default(uuid())
+  vendorId            String
+  zoneName            String
+  zoneType            String               // primary, extended
+  latitude            Float?
+  longitude           Float?
+  createdAt           DateTime             @default(now())
+
+  vendor              Vendor               @relation(fields: [vendorId], references: [id])
+}
+
+model VendorAvailability {
+  id                  String               @id @default(uuid())
+  vendorId            String
+  weekday             Int                  // 0 to 6
+  startTime           DateTime?            @db.Time
+  endTime             DateTime?            @db.Time
+  isOff               Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  vendor              Vendor               @relation(fields: [vendorId], references: [id])
+
+  @@unique([vendorId, weekday])
+}
+
+model OrganizationVendor {
+  id                  String               @id @default(uuid())
+  organizationId      String
+  vendorId            String
+  relationshipStatus  String               // preferred, neutral, limited, not_receiving
+  invitedAt           DateTime?
+  activatedAt         DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  organization        Organization         @relation(fields: [organizationId], references: [id])
+  vendor              Vendor               @relation(fields: [vendorId], references: [id])
+
+  @@unique([organizationId, vendorId])
+}
+
+// ----------------------------------------------------------------------------
+// Operations (Jobs, Incidents, Approvals)
+// ----------------------------------------------------------------------------
+
+model Job {
+  id                       String          @id @default(uuid())
+  jobCode                  String          @unique
+  organizationId           String
+  propertyId               String
+  tradeCode                String
+  workflowClass            String
+  subtype                  String?
+  severity                 String
+  source                   String
+  title                    String
+  description              String?
+  serviceType              String
+  payoutAmount             Float?
+  quoteRequired            Boolean         @default(false)
+  assessmentRequired       Boolean         @default(false)
+  accessReady              Boolean         @default(false)
+  scheduledStart           DateTime?
+  estimatedDurationMinutes Int?
+  status                   String          // See canonical states
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  organization             Organization    @relation(fields: [organizationId], references: [id])
+  property                 Property        @relation(fields: [propertyId], references: [id])
+  offers                   JobOffer[]
+  assignments              JobAssignment[]
+  incidents                Incident[]
+  approvals                Approval[]
+}
+
+model JobOffer {
+  id                  String               @id @default(uuid())
+  jobId               String
+  vendorId            String
+  phase               String               // exclusive, priority, open_pool, assigned
+  offerStatus         String               // offered, accepted, declined, expired, missed, withdrawn
+  offeredAt           DateTime
+  expiresAt           DateTime?
+  respondedAt         DateTime?
+  createdAt           DateTime             @default(now())
+
+  job                 Job                  @relation(fields: [jobId], references: [id])
+  vendor              Vendor               @relation(fields: [vendorId], references: [id])
+
+  @@unique([jobId, vendorId, phase, offeredAt])
+}
+
+model JobAssignment {
+  id                  String               @id @default(uuid())
+  jobId               String
+  vendorId            String
+  assignmentType      String               // auto, manual
+  assignedAt          DateTime             @default(now())
+  acceptedAt          DateTime?
+  completedAt         DateTime?
+
+  job                 Job                  @relation(fields: [jobId], references: [id])
+  vendor              Vendor               @relation(fields: [vendorId], references: [id])
+}
+
+model Incident {
+  id                  String               @id @default(uuid())
+  incidentCode        String               @unique
+  organizationId      String
+  propertyId          String
+  relatedJobId        String?
+  title               String
+  incidentType        String               // maintenance_issue, emergency, guest_damage, inspection_finding
+  severity            String               // low, moderate, high, critical
+  status              String               // open, in_progress, under_control, resolved, closed
+  summary             String?
+  estimatedCostMin    Float?
+  estimatedCostMax    Float?
+  ownerActionRequired Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  resolvedAt          DateTime?
+
+  organization        Organization         @relation(fields: [organizationId], references: [id])
+  property            Property             @relation(fields: [propertyId], references: [id])
+  job                 Job?                 @relation(fields: [relatedJobId], references: [id])
+  approvals           Approval[]
+}
+
+model Approval {
+  id                  String               @id @default(uuid())
+  approvalCode        String               @unique
+  organizationId      String
+  propertyId          String
+  ownerId             String
+  relatedJobId        String?
+  relatedIncidentId   String?
+  approvalType        String               // repair, maintenance, owner_stay, reserve_use, policy
+  title               String
+  description         String?
+  amount              Float?
+  urgency             String               // urgent, normal, low
+  status              String               // awaiting_owner_decision, etc.
+  pmRecommendation    String?
+  ownerQuestion       String?
+  pmResponse          String?
+  createdAt           DateTime             @default(now())
+  decidedAt           DateTime?
+
+  organization        Organization         @relation(fields: [organizationId], references: [id])
+  property            Property             @relation(fields: [propertyId], references: [id])
+  owner               Owner                @relation(fields: [ownerId], references: [id])
+  job                 Job?                 @relation(fields: [relatedJobId], references: [id])
+  incident            Incident?            @relation(fields: [relatedIncidentId], references: [id])
+}
+
+// ----------------------------------------------------------------------------
+// Compliance & Flags
+// ----------------------------------------------------------------------------
+
+model ComplianceRequirement {
+  id                  String               @id @default(uuid())
+  requirementCode     String               @unique
+  name                String
+  requirementScope    String               // shared, trade_specific
+  tradeCode           String?
+  documentType        String
+  isRequired          Boolean              @default(true)
+  blocksDispatch      Boolean              @default(false)
+  warningDays         Int?
+  createdAt           DateTime             @default(now())
+
+  documents           VendorDocument[]
+}
+
+model VendorDocument {
+  id                      String               @id @default(uuid())
+  vendorId                String
+  vendorTradeId           String?
+  complianceRequirementId String
+  documentType            String
+  sourceType              String               // vendor_upload, provider_verified, system_generated
+  fileUrl                 String?
+  externalReference       String?
+  reviewStatus            String               // pending, approved, rejected, reupload_required
+  extractedStatus         String               // not_started, processing, completed, failed
+  effectiveDate           DateTime?            @db.Date
+  expiryDate              DateTime?            @db.Date
+  submittedAt             DateTime?
+  reviewedAt              DateTime?
+  reviewedByUserId        String?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  vendor                  Vendor               @relation(fields: [vendorId], references: [id])
+  vendorTrade             VendorTrade?         @relation(fields: [vendorTradeId], references: [id])
+  complianceRequirement   ComplianceRequirement @relation(fields: [complianceRequirementId], references: [id])
+  fields                  VendorDocumentField[]
+}
+
+model VendorDocumentField {
+  id                  String               @id @default(uuid())
+  vendorDocumentId    String
+  fieldName           String
+  fieldValueRaw       String?
+  fieldValueNormalized String?
+  confidenceScore     Float?
+  sourceType          String               // extracted, vendor_confirmed, admin_edited, provider
+  createdAt           DateTime             @default(now())
+
+  document            VendorDocument       @relation(fields: [vendorDocumentId], references: [id])
+}
+
+model Flag {
+  id                  String               @id @default(uuid())
+  vendorId            String
+  organizationId      String?
+  propertyId          String?
+  jobId               String?
+  flagType            String               // no_show, late_arrival, quality_issue, compliance_issue, dispute_loss
+  severity            String               // low, medium, high, critical
+  sourceType          String               // pm, system, admin
+  sourceUserId        String?
+  status              String               // open, under_review, resolved, dismissed, escalated
+  description         String
+  createdAt           DateTime             @default(now())
+  resolvedAt          DateTime?
+
+  vendor              Vendor               @relation(fields: [vendorId], references: [id])
+  organization        Organization?        @relation(fields: [organizationId], references: [id])
+  property            Property?            @relation(fields: [propertyId], references: [id])
+}
+
+model Dispute {
+  id                  String               @id @default(uuid())
+  disputeCode         String               @unique
+  jobId               String
+  organizationId      String
+  vendorId            String
+  openedByType        String               // pm, vendor
+  openedByUserId      String
+  disputeType         String               // payment, scope, access, quality
+  status              String               // open, waiting_on_pm, waiting_on_vendor, ready_for_decision, resolved, closed
+  pmPosition          String?
+  vendorPosition      String?
+  decisionResult      String?              // support_pm, support_vendor
+  decisionNote        String?
+  decidedByUserId     String?
+  createdAt           DateTime             @default(now())
+  decidedAt           DateTime?
+  closedAt            DateTime?
+
+  organization        Organization         @relation(fields: [organizationId], references: [id])
+  vendor              Vendor               @relation(fields: [vendorId], references: [id])
+}
+
+// ----------------------------------------------------------------------------
+// Governance & Notifications
+// ----------------------------------------------------------------------------
+
+model Notification {
+  id                  String               @id @default(uuid())
+  userId              String
+  channel             String               // in_app, email, sms, push
+  category            String               // approval, incident, financial, compliance, system
+  title               String
+  body                String
+  targetType          String?
+  targetId            String?
+  deliveryStatus      String               // pending, sent, failed, read
+  sentAt              DateTime?
+  readAt              DateTime?
+  createdAt           DateTime             @default(now())
+
+  user                User                 @relation(fields: [userId], references: [id])
+}
+
+// Operational mutable events
+model TimelineEvent {
+  id                  String               @id @default(uuid())
+  eventId             String               @unique
+  jobId               String?
+  actorType           String
+  actorUserId         String?
+  eventType           String
+  summary             String
+  metadata            Json                 @default("{}")
+  createdAt           DateTime             @default(now())
+
+  user                User?                @relation(fields: [actorUserId], references: [id])
+}
+
+// Append-only governance events
+model AuditEvent {
+  id                  String               @id @default(uuid())
+  eventCode           String               @unique
+  actorType           String               // admin, pm, vendor, owner, system
+  actorUserId         String?
+  targetType          String
+  targetId            String?
+  category            String
+  eventType           String
+  summary             String
+  metadata            Json                 @default("{}")
+  sessionLabel        String?
+  createdAt           DateTime             @default(now())
+
+  user                User?                @relation(fields: [actorUserId], references: [id])
+}

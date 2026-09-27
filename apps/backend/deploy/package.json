@@ -1,0 +1,1 @@
+{"name":"backend","dependencies":{"pg":"^8.23.0","typescript":"^5.0.0","@types/node":"^20.0.0"}}

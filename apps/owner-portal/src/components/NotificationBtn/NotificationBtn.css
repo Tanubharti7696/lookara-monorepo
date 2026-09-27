@@ -1,0 +1,27 @@
+/* apps/owner-portal/src/components/NotificationBtn/NotificationBtn.css */
+.notif-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: var(--graphite);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.notif-btn:hover { border-color: var(--gold); }
+
+.notif-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--charcoal);
+  border-radius: 50%;
+  background: var(--danger);
+}

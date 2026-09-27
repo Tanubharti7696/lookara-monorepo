@@ -1,0 +1,300 @@
+/* apps/public-portal/src/pages/Tools/Tools.css
+   Scoped under .tools-page. */
+
+.tools-page .container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 3rem;
+}
+
+.tools-page .btn-primary {
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: linear-gradient(135deg, var(--champagne-gold) 0%, #C9A227 100%);
+  color: var(--charcoal);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.tools-page .btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px var(--champagne-gold-dim);
+}
+
+/* ═══════════ HERO ═══════════ */
+.tools-page .hero {
+  padding: 9rem 0 4rem;
+  border-bottom: 1px solid var(--white-faint);
+}
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.875rem;
+  background: var(--champagne-gold-subtle);
+  border: 1px solid var(--champagne-gold-dim);
+  border-radius: 20px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--champagne-gold);
+  margin-bottom: 1.5rem;
+}
+.tools-page .hero h1 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  margin-bottom: 1rem;
+}
+.tools-page .hero h1 .highlight {
+  background: linear-gradient(135deg, var(--champagne-gold) 0%, #F5D78E 50%, var(--champagne-gold) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hero-sub {
+  font-size: 1rem;
+  color: var(--white-dim);
+  line-height: 1.7;
+  max-width: 540px;
+  margin-bottom: 0.5rem;
+}
+.hero-note {
+  font-size: 0.875rem;
+  color: var(--slate);
+  margin-bottom: 2rem;
+}
+
+/* ═══════════ FRAMING STRIP ═══════════ */
+.framing {
+  background: var(--charcoal-light);
+  border-top: 1px solid var(--white-faint);
+  border-bottom: 1px solid var(--white-faint);
+  padding: 1.5rem 0;
+}
+.framing-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 3rem;
+}
+.framing-text {
+  font-size: 0.9375rem;
+  color: var(--white-dim);
+  line-height: 1.6;
+}
+.framing-text strong {
+  color: var(--white);
+  font-weight: 600;
+}
+
+/* ═══════════ TOOLS BODY ═══════════ */
+.tools-body {
+  padding: 4rem 0;
+}
+
+.layer {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 0;
+  border-top: 1px solid var(--white-faint);
+}
+.layer:last-child {
+  border-bottom: 1px solid var(--white-faint);
+}
+
+/* Left: layer label */
+.layer-label {
+  padding: 2rem 2rem 2rem 0;
+  border-right: 1px solid var(--white-faint);
+  position: sticky;
+  top: 64px;
+  align-self: start;
+}
+.layer-icon {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+.layer-name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--champagne-gold);
+  margin-bottom: 0.25rem;
+}
+.layer-desc {
+  font-size: 0.75rem;
+  color: var(--slate);
+  line-height: 1.5;
+}
+
+/* Right: tools */
+.layer-tools {
+  padding: 2rem 0 2rem 2rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.tool-row {
+  padding: 1.25rem 0;
+  border-bottom: 1px solid var(--white-faint);
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 2rem;
+  align-items: flex-start;
+}
+.tool-row:last-child {
+  border-bottom: none;
+}
+.tool-name-col {
+  padding-top: 0.125rem;
+}
+.tool-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--white);
+  margin-bottom: 0.25rem;
+  letter-spacing: -0.01em;
+}
+.tool-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  background: var(--champagne-gold-subtle);
+  border: 1px solid var(--champagne-gold-dim);
+  border-radius: 4px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--champagne-gold);
+}
+.tool-badge.core {
+  background: rgba(220,38,38,0.08);
+  border-color: rgba(220,38,38,0.3);
+  color: #f87171;
+}
+.tool-purpose {
+  font-size: 0.875rem;
+  color: var(--white-dim);
+  margin-bottom: 0.625rem;
+  line-height: 1.5;
+}
+.tool-bullets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.tool-bullets li {
+  font-size: 0.8125rem;
+  color: var(--slate);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  line-height: 1.4;
+}
+.tool-bullets li::before {
+  content: '—';
+  color: var(--champagne-gold-dim);
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  margin-top: 0.1rem;
+}
+
+/* ═══════════ HOOD ═══════════ */
+.hood-section {
+  padding: 3rem 0;
+  background: var(--charcoal-light);
+  border-top: 1px solid var(--white-faint);
+  border-bottom: 1px solid var(--white-faint);
+}
+.hood-inner {
+  display: flex;
+  align-items: center;
+  gap: 3rem;
+  flex-wrap: wrap;
+}
+.hood-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--slate);
+  flex-shrink: 0;
+}
+.hood-text {
+  font-size: 0.875rem;
+  color: var(--white-dim);
+}
+
+/* ═══════════ CTA ═══════════ */
+.tools-page .cta-section {
+  padding: 5rem 0;
+  text-align: center;
+}
+.cta-inner {
+  max-width: 520px;
+  margin: 0 auto;
+}
+.cta-inner h2 {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.75rem;
+}
+.cta-inner h2 .highlight {
+  background: linear-gradient(135deg, var(--champagne-gold) 0%, #F5D78E 50%, var(--champagne-gold) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.cta-inner p {
+  font-size: 0.9375rem;
+  color: var(--slate);
+  margin-bottom: 2rem;
+}
+
+/* ═══════════ RESPONSIVE ═══════════ */
+@media (max-width: 1024px) {
+  .layer {
+    grid-template-columns: 1fr;
+  }
+  .layer-label {
+    position: static;
+    padding: 1.5rem 0 1rem;
+    border-right: none;
+    border-bottom: 1px solid var(--white-faint);
+  }
+  .layer-tools {
+    padding: 1rem 0 1.5rem;
+  }
+  .tool-row {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  .framing-inner {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .tools-page .container {
+    padding: 0 2rem;
+  }
+  .hood-inner {
+    gap: 1.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .tools-page .hero {
+    padding: 7rem 0 3rem;
+  }
+  .tools-page .container {
+    padding: 0 1.5rem;
+  }
+}
