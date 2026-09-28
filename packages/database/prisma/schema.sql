@@ -399,3 +399,15 @@ CREATE TABLE IF NOT EXISTS audit_events (
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_events_category ON audit_events(category);
 CREATE INDEX IF NOT EXISTS idx_audit_events_target ON audit_events(target_type, target_id);
+
+-- Migration for missing property columns (idempotent)
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS beds INTEGER DEFAULT 0;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS baths NUMERIC(3,1) DEFAULT 0;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS sqft INTEGER DEFAULT 0;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS property_type TEXT;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS amenities JSONB;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS media JSONB;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS owner_name TEXT;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS owner_email TEXT;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS manager_name TEXT;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS compliance_template TEXT;
