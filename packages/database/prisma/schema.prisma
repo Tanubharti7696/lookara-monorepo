@@ -50,6 +50,16 @@ model Property {
   longitude           Float?
   timezone            String               @default("America/New_York")
   status              String               // active, inactive
+  beds                Int?                 @default(0)
+  baths               Float?               @default(0)
+  sqft                Int?                 @default(0)
+  propertyType        String?              @map("property_type")
+  amenities           Json?
+  media               Json?
+  ownerName           String?              @map("owner_name")
+  ownerEmail          String?              @map("owner_email")
+  managerName         String?              @map("manager_name")
+  complianceTemplate  String?              @map("compliance_template")
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 

@@ -32,6 +32,16 @@ CREATE TABLE IF NOT EXISTS properties (
   longitude NUMERIC(9,6),
   timezone TEXT NOT NULL DEFAULT 'America/New_York',
   status TEXT NOT NULL CHECK (status IN ('active','inactive')),
+  beds INTEGER DEFAULT 0,
+  baths NUMERIC(3,1) DEFAULT 0,
+  sqft INTEGER DEFAULT 0,
+  property_type TEXT,
+  amenities JSONB,
+  media JSONB,
+  owner_name TEXT,
+  owner_email TEXT,
+  manager_name TEXT,
+  compliance_template TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
