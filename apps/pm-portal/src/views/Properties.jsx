@@ -22,6 +22,7 @@ const VIEWS = [
 export default function Properties({ onToast }) {
   const navigate = useNavigate();
   const [propertiesList, setPropertiesList] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
     apiFetch('/api/v1/properties')
@@ -67,7 +68,8 @@ export default function Properties({ onToast }) {
           setPropertiesList(mapped);
         }
       })
-      .catch(err => console.error('Failed to load properties:', err));
+      .catch(err => console.error('Failed to load properties:', err))
+      .finally(() => setIsLoading(false));
   }, []);
   const [view, setView] = useState('grid');
   const [search, setSearch] = useState('');
@@ -237,7 +239,13 @@ export default function Properties({ onToast }) {
       </div>
 
       <div className="props-content">
-        {filtered.length === 0 ? (
+        {isLoading ? (
+          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-dim)' }}>
+            <div className="spinner" style={{ margin: '0 auto 1rem', width: '24px', height: '24px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--brand-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+            Loading properties...
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="props-empty">
             <div className="props-empty__icon">🔎</div>
             <div className="props-empty__title">No properties match your filters</div>
@@ -249,7 +257,7 @@ export default function Properties({ onToast }) {
           </div>
         )}
 
-        {view === 'list' && (
+        {!isLoading && view === 'list' && (
           <div className="props-list">
             <div className="props-list__head">
               <div>Property</div>
@@ -266,7 +274,7 @@ export default function Properties({ onToast }) {
           </div>
         )}
 
-        {view === 'map' && (
+        {!isLoading && view === 'map' && (
           <PropertyMap properties={filtered} onSelect={openDetail} />
         )}
       </div>

@@ -12,6 +12,7 @@ import './TasksView.css';
 
 export default function TasksView() {
   const [tasks, setTasks] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
     apiFetch('/api/v1/tasks')
@@ -42,7 +43,8 @@ export default function TasksView() {
           setTasks(mapped);
         }
       })
-      .catch(err => console.error('Failed to load tasks:', err));
+      .catch(err => console.error('Failed to load tasks:', err))
+      .finally(() => setIsLoading(false));
   }, []);
   const [tab, setTab] = useState('active');
   const [search, setSearch] = useState('');
@@ -230,7 +232,15 @@ export default function TasksView() {
           )}
         </div>
 
-        <TaskListView tasks={filtered} onOpenTask={setOpenTaskId} />
+        {isLoading ? (
+          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-dim)' }}>
+            <div className="spinner" style={{ margin: '0 auto 1rem', width: '24px', height: '24px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--brand-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+            Loading tasks...
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        ) : (
+          <TaskListView tasks={filtered} onOpenTask={setOpenTaskId} />
+        )}
       </div>
 
       <CreateTaskModal
