@@ -61,6 +61,18 @@ export default function TasksView() {
   const updateTask = (patch) => {
     if (!openTaskId) return;
     
+    if (patch.delete) {
+      if (!window.confirm('Are you sure you want to delete this task?')) return;
+      
+      setTasks(list => list.filter(t => t.id !== openTaskId));
+      setOpenTaskId(null);
+
+      apiFetch(`/api/v1/tasks/${openTaskId}`, {
+        method: 'DELETE',
+      }).catch(console.error);
+      return;
+    }
+
     // Optimistic update
     setTasks(list => list.map(t => (t.id === openTaskId ? { ...t, ...patch } : t)));
     

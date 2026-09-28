@@ -1,5 +1,5 @@
 // apps/backend/src/tasks/tasks.controller.ts
-import { Controller, Get, Post, Patch, Param, Query, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Query, Body, UseGuards } from '@nestjs/common';
 import { TasksService, type CreateTaskDto } from './tasks.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -45,5 +45,10 @@ export class TasksController {
     @Body('status') newStatus: string,
   ) {
     return this.tasksService.updateStatus(id, user, newStatus);
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.tasksService.remove(id, user);
   }
 }

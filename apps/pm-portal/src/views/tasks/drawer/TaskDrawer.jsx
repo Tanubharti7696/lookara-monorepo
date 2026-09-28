@@ -75,7 +75,10 @@ export default function TaskDrawer({ task, onClose, onUpdate }) {
             <span className={`lk-drawer__sev lk-drawer__sev--${task.severity.toLowerCase()}`}>
               {task.severity}
             </span>
-            <button className="lk-drawer__close" onClick={onClose} aria-label="Close">✕</button>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button onClick={() => onUpdate({ delete: true })} aria-label="Delete Task" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '1.25rem', padding: '0.25rem' }}>🗑</button>
+              <button className="lk-drawer__close" onClick={onClose} aria-label="Close" style={{ margin: 0 }}>✕</button>
+            </div>
           </div>
 
           <div className="lk-drawer__meta">

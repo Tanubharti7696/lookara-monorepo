@@ -203,4 +203,27 @@ export class TasksService {
 
     return res.rows[0];
   }
+
+  async remove(id: string, user: JwtPayload) {
+    const task = await this.findOne(id, user);
+    
+    // Only admins or PMs in the same org can delete
+    if (user.activeOrganizationId && task.organization_id !== user.activeOrganizationId && !user.isAdmin) {
+      throw new ForbiddenException('Not authorized to delete this task');
+    }
+
+    await query(`DELETE FROM jobs WHERE id = $1`, [id]);
+    
+    await this.auditService.recordEvent({
+      actorType: user.isAdmin ? 'admin' : 'pm',
+      actorUserId: user.sub,
+      targetType: 'job',
+      targetId: id,
+      category: 'task',
+      eventType: 'task.deleted',
+      summary: `Task ${task.job_code} (${task.title}) was deleted`,
+    });
+
+    return { success: true };
+  }
 }

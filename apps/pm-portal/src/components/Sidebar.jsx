@@ -97,7 +97,7 @@ const NAV = [
     section: 'Operations',
     items: [
       { to: '/dashboard',   icon: <IconDashboard />, label: 'Dashboard' },
-      { to: '/tasks',       icon: <IconTasks />,     label: 'Tasks',      badge: 23 },
+      { to: '/tasks',       icon: <IconTasks />,     label: 'Tasks' },
       { to: '/emergency',   icon: <IconEmergency />, label: 'Emergency',  badge: 1,  badgeTone: 'crimson' },
       { to: '/calendar',    icon: <IconCalendar />,  label: 'Calendar' },
       { to: '/alerts',      icon: <IconAlerts />,    label: 'Alerts',     badge: 12, badgeTone: 'amber' },
