@@ -5,7 +5,9 @@ export default function PropertyCard({ property: p, onClick }) {
   return (
     <article className="pcard" onClick={onClick}>
       <div className="pcard__hero" style={{ background: p.image }}>
-        <span className="pcard__emoji">{p.emoji}</span>
+        {(!p.image || !p.image.includes('url(')) && (
+          <span className="pcard__emoji">{p.emoji}</span>
+        )}
         <span className={`pcard__status pcard__status--${p.status}`}>{p.status}</span>
         {p.openWOs > 0 && (
           <span className="pcard__wo-badge">🔧 {p.openWOs}</span>
