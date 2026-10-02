@@ -1,8 +1,8 @@
 // src/views/vendors/AttachSheet.jsx
 import { useState, useEffect } from 'react';
-import { VD, PROPERTIES } from '../../data/vendors';
+import { PROPERTIES } from '../../data/vendors';
 
-export default function AttachSheet({ vendorId, vendorName, vendorTrade, selectedProperty, onClose, onConfirm, onToast }) {
+export default function AttachSheet({ VD, vendorId, vendorName, vendorTrade, selectedProperty, onClose, onConfirm, onToast }) {
   const [role, setRole] = useState('Property Coverage');
   const [priority, setPriority] = useState('Preferred');
   const [autopilot, setAutopilot] = useState(true);

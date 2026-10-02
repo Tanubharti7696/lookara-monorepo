@@ -9,6 +9,7 @@ import { PropertiesModule } from './properties/properties.module';
 import { TasksModule } from './tasks/tasks.module';
 import { DispatchModule } from './dispatch/dispatch.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { VendorsModule } from './vendors/vendors.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     TasksModule,
     DispatchModule,
     DashboardModule,
+    VendorsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

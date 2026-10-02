@@ -1,5 +1,6 @@
 // src/views/VendorsView.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiFetch } from '../utils/api';
 import VendorsTopBar from './vendors/VendorsTopBar';
 import VendorsKpiStrip from './vendors/VendorsKpiStrip';
 import VendorsTabs from './vendors/VendorsTabs';
@@ -11,7 +12,7 @@ import AttachSheet from './vendors/AttachSheet';
 import DispatchSheet from './vendors/DispatchSheet';
 import MoreSheet from './vendors/MoreSheet';
 import DependencyWarning from './vendors/DependencyWarning';
-import { VENDOR_ATTACHMENTS, VD, PROPERTIES } from '../data/vendors';
+import { VENDOR_ATTACHMENTS, VD as MOCK_VD, PROPERTIES } from '../data/vendors';
 import './VendorsView.css';
 
 export default function VendorsView() {
@@ -22,6 +23,57 @@ export default function VendorsView() {
   const [selectedProperty, setProperty] = useState(null);
   const [depWarning, setDepWarning]     = useState(null);
   const [toast, setToast]               = useState(null);
+  const [VD, setVD]                     = useState(MOCK_VD);
+  const [loading, setLoading]           = useState(true);
+
+  useEffect(() => {
+    apiFetch('/api/v1/vendors')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.data) {
+          const liveVD = {};
+          data.data.forEach((v, i) => {
+            const vid = v.id || `live-v-${i}`;
+            liveVD[vid] = {
+              name: v.name,
+              sub: `${v.trade_count > 0 ? 'Multi-trade' : 'Specialty'} · ${v.tier}`,
+              conf: v.org_status === 'active' ? 'HIGH CONFIDENCE' : 'MODERATE',
+              confCls: v.org_status === 'active' ? 'high' : 'mod',
+              confSub: v.org_status === 'active' ? 'Preferred Vendor' : 'Pending Verification',
+              avatarBg: 'rgba(59,130,246,.12)',
+              avatarColor: '#60a5fa',
+              avail: v.org_status === 'active' ? '● Available Now' : '● Offline',
+              availColor: v.org_status === 'active' ? 'var(--success)' : 'var(--slate)',
+              ah: 'No',
+              emg: 'Not eligible',
+              emgColor: 'var(--slate)',
+              jobs: `${v.task_count} in progress`,
+              rel: v.rating > 0 ? (v.rating * 20).toString() : '85',
+              relColor: 'var(--success)',
+              sla: '95%',
+              resp: '30m',
+              coverage: 'All Properties',
+              phone: v.contact_phone || '—',
+              email: v.contact_email || '—',
+              region: 'Local',
+              trade: 'General',
+              team: '1 technicians',
+              since: '2023',
+              trust: v.rating > 0 ? (v.rating * 20) : 85,
+              slaReliability: 95,
+              acceptanceRate: 90,
+              reworkRate: 2,
+              avgResponseMin: 30,
+              paymentDisputes: 0,
+              lastTen: [1,1,1,1,1,1,1,1,1,1],
+            };
+          });
+          setVD(prev => ({ ...prev, ...liveVD }));
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
   const showToast = (msg, type = 'info') => {
     setToast({ msg, type, id: Date.now() });
@@ -137,6 +189,7 @@ export default function VendorsView() {
 
       {tab === 'coverage' && (
         <CoveragePane
+          VD={VD}
           attachments={attachments}
           onOpenVendor={openVendor}
           onAttach={(propName) => {
@@ -154,6 +207,7 @@ export default function VendorsView() {
 
       {tab === 'directory' && (
         <DirectoryPane
+          VD={VD}
           selectedProperty={selectedProperty}
           onSelectProperty={setProperty}
           onClearProperty={() => setProperty(null)}
@@ -168,6 +222,7 @@ export default function VendorsView() {
 
       {sheet === 'vendorDetail' && (
         <VendorDetailSheet
+          VD={VD}
           vendorId={sheetData.vendorId}
           attachments={attachments}
           onClose={closeSheet}
@@ -179,6 +234,7 @@ export default function VendorsView() {
 
       {sheet === 'attach' && (
         <AttachSheet
+          VD={VD}
           vendorId={sheetData.vendorId}
           vendorName={sheetData.vendorName}
           vendorTrade={sheetData.vendorTrade}
@@ -191,6 +247,7 @@ export default function VendorsView() {
 
       {sheet === 'dispatch' && (
         <DispatchSheet
+          VD={VD}
           vendorId={sheetData.vendorId}
           onClose={closeSheet}
           onConfirm={handleDispatchConfirm}

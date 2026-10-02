@@ -3,7 +3,7 @@ import { useState } from 'react';
 import CoverageCard from './CoverageCard';
 import { PROPERTIES, REGION_GROUPS } from '../../data/vendors';
 
-export default function CoveragePane({ attachments, onOpenVendor, onAttach, onReplace, onRemove, onFlash, onToast }) {
+export default function CoveragePane({ VD, attachments, onOpenVendor, onAttach, onReplace, onRemove, onFlash, onToast }) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
 
@@ -64,6 +64,7 @@ export default function CoveragePane({ attachments, onOpenVendor, onAttach, onRe
                   onReplace={onReplace}
                   onRemove={onRemove}
                   onFlash={onFlash}
+                  VD={VD}
                 />
               ))}
             </div>

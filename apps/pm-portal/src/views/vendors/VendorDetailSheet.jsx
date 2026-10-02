@@ -1,6 +1,6 @@
 // src/views/vendors/VendorDetailSheet.jsx
 import { useState, useEffect } from 'react';
-import { VD, getTradeCompliance } from '../../data/vendors';
+import { getTradeCompliance } from '../../data/vendors';
 
 const TABS = [
   { key: 'overview',    label: 'Overview' },
@@ -12,7 +12,7 @@ const TABS = [
   { key: 'impact',      label: 'Portfolio Impact' },
 ];
 
-export default function VendorDetailSheet({ vendorId, attachments, onClose, onOpenDispatch, onOpenAttach, onToast }) {
+export default function VendorDetailSheet({ VD, vendorId, attachments, onClose, onOpenDispatch, onOpenAttach, onToast }) {
   const [tab, setTab] = useState('overview');
 
   useEffect(() => { setTab('overview'); }, [vendorId]);

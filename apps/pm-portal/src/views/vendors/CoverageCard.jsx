@@ -1,8 +1,8 @@
 // src/views/vendors/CoverageCard.jsx
 import { useState } from 'react';
-import { VD, TRADE_ICONS, TRADE_LABELS } from '../../data/vendors';
+import { TRADE_ICONS, TRADE_LABELS } from '../../data/vendors';
 
-export default function CoverageCard({ property, attachments, onOpenVendor, onAttach, onReplace, onRemove, onFlash }) {
+export default function CoverageCard({ property, attachments, onOpenVendor, onAttach, onReplace, onRemove, onFlash, VD }) {
   const [open, setOpen] = useState(false);
 
   const attachedVids = Object.keys(attachments).filter(vid =>

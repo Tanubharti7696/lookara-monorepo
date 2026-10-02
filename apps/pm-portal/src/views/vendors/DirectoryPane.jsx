@@ -1,8 +1,9 @@
 // src/views/vendors/DirectoryPane.jsx
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { VD, PROPERTIES, TRADE_CHIPS, TRADE_LABELS } from '../../data/vendors';
+import { PROPERTIES, TRADE_CHIPS, TRADE_LABELS } from '../../data/vendors';
 
 export default function DirectoryPane({
+  VD,
   selectedProperty, onSelectProperty, onClearProperty,
   attachments, onOpenVendor, onAttach, onToast,
 }) {

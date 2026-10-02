@@ -1,6 +1,5 @@
 // src/views/vendors/DispatchSheet.jsx
 import { useState, useEffect } from 'react';
-import { VD } from '../../data/vendors';
 
 const JOBS = [
   { id: 'TSK-2901', title: 'Turnover Clean',   prop: 'Apt 4B · Brooklyn Heights · Unassigned', section: 'at-risk',   time: '43m',      timeSub: 'remaining', timeTone: 'urgent' },
@@ -8,7 +7,7 @@ const JOBS = [
   { id: 'TSK-2915', title: 'Deep Clean',       prop: 'Suite 7C · Park Slope · Unassigned',     section: 'upcoming',  time: 'Tomorrow', timeSub: '9:00 AM',   timeTone: 'ok'     },
 ];
 
-export default function DispatchSheet({ vendorId, onClose, onConfirm, onToast }) {
+export default function DispatchSheet({ VD, vendorId, onClose, onConfirm, onToast }) {
   const [selectedJob, setSelectedJob] = useState(null);
 
   useEffect(() => {
