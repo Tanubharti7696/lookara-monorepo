@@ -145,11 +145,6 @@ export default function DashboardView() {
           </>
         )}
       </div>
-        <TrendCharts />
-        <OperationalBriefing onNavigate={onNavigate} />
-        <HealthDetails />
-        <FinancialPreview onNavigate={onNavigate} />
-      </div>
     </div>
   );
 }
