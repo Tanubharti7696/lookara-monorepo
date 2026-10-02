@@ -129,7 +129,7 @@ const NAV = [
 ];
 
 export default function Sidebar() {
-  const { sidebarOpen, closeSidebar } = useShell();
+  const { sidebarOpen, closeSidebar, user, isLoadingUser } = useShell();
 
   const handleExit = () => {
     localStorage.removeItem('lookara_token');
@@ -143,6 +143,10 @@ export default function Sidebar() {
     window.location.href = target;
   };
 
+  const name = user?.name || 'Loading...';
+  const orgName = user?.organizations?.[0]?.organization?.name || 'PM Portfolio';
+  const initials = isLoadingUser ? '...' : (name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'PM');
+
   return (
     <>
       <div
@@ -155,10 +159,10 @@ export default function Sidebar() {
         <div className="logo">LOOKARA</div>
 
         <div className="pm-profile">
-          <div className="pm-avatar">DN</div>
+          <div className="pm-avatar">{initials}</div>
           <div className="pm-info">
-            <div className="pm-name">David Nor</div>
-            <div className="pm-role">NYC Premium Portfolio</div>
+            <div className="pm-name">{name}</div>
+            <div className="pm-role">{orgName}</div>
           </div>
         </div>
 

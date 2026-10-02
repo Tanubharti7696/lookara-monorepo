@@ -22,6 +22,8 @@ import Support from './views/Support';
 import ComplianceTemplateBuilder from './views/ComplianceTemplateBuilder';
 import './styles/drawer.css';
 
+import { apiFetch } from './utils/api';
+
 type ToastState = {
   msg: string;
   type: string;
@@ -41,8 +43,30 @@ export default function App() {
 function Shell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [toast, setToast] = useState<ToastState>(null);
+  const [user, setUser] = useState<any>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    apiFetch('/api/v1/auth/me')
+      .then((res) => {
+        if (!res.ok) throw new Error('Unauthorized');
+        return res.json();
+      })
+      .then((data) => {
+        if (data.data) {
+          setUser(data.data);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to fetch user', err);
+        // Could redirect to login here if token is entirely invalid
+      })
+      .finally(() => {
+        setIsLoadingUser(false);
+      });
+  }, []);
 
   // Auto-close mobile sidebar on route change
   useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
@@ -62,6 +86,8 @@ function Shell() {
     sidebarOpen,
     openSidebar: () => setSidebarOpen(true),
     closeSidebar: () => setSidebarOpen(false),
+    user,
+    isLoadingUser,
   };
 
   return (
