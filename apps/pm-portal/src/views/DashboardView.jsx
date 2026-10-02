@@ -8,15 +8,24 @@ import TrendCharts from './dashboard/TrendCharts';
 import OperationalBriefing from './dashboard/OperationalBriefing';
 import HealthDetails from './dashboard/HealthDetails';
 import FinancialPreview from './dashboard/FinancialPreview';
-import { PORTFOLIOS } from '../data/dashboardData';
+import { apiFetch } from '../utils/api';
 import './DashboardView.css';
 
 export default function DashboardView() {
   const navigate = useNavigate();
-  const [portfolio, setPortfolio] = useState(PORTFOLIOS[1]); // NYC default
+  const [metrics, setMetrics] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [ddOpen, setDdOpen] = useState(false);
   const [search, setSearch] = useState('');
   const wrapRef = useRef(null);
+
+  useEffect(() => {
+    apiFetch('/api/v1/dashboard/metrics')
+      .then(res => res.json())
+      .then(data => setMetrics(data))
+      .catch(err => console.error(err))
+      .finally(() => setLoading(false));
+  }, []);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -34,11 +43,8 @@ export default function DashboardView() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  const matches = search
-    ? PORTFOLIOS.filter(p =>
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        p.cities.toLowerCase().includes(search.toLowerCase()))
-    : PORTFOLIOS;
+  // Matches would be for portfolio switcher if we keep it
+  const matches = [];
 
   const onNavigate = (target) => {
     // Simple routing map — extend as views get built
@@ -70,7 +76,7 @@ export default function DashboardView() {
               aria-expanded={ddOpen}
             >
               <span className="portfolio-picker__text">
-                {portfolio.name} · {portfolio.props} properties
+                Live PM Portfolio
               </span>
               <span className={`portfolio-picker__chev ${ddOpen ? 'open' : ''}`}>▼</span>
             </button>
@@ -122,9 +128,23 @@ export default function DashboardView() {
 
       {/* Page Body */}
       <div className="dashboard-body">
-        <CriticalBanner onNavigate={onNavigate} />
-        <HealthScoreBar />
-        <OperationalSnapshot onNavigate={onNavigate} />
+        {loading ? (
+          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-dim)' }}>
+             <div className="spinner" style={{ margin: '0 auto 1rem', width: '24px', height: '24px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--brand-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+             Loading live metrics...
+          </div>
+        ) : (
+          <>
+            <CriticalBanner onNavigate={onNavigate} metrics={metrics} />
+            <HealthScoreBar metrics={metrics} />
+            <OperationalSnapshot onNavigate={onNavigate} metrics={metrics} />
+            <TrendCharts />
+            <OperationalBriefing onNavigate={onNavigate} metrics={metrics} />
+            <HealthDetails />
+            <FinancialPreview onNavigate={onNavigate} />
+          </>
+        )}
+      </div>
         <TrendCharts />
         <OperationalBriefing onNavigate={onNavigate} />
         <HealthDetails />
