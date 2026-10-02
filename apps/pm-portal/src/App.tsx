@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthGuard } from './components/AuthGuard';
+import { RoleGuard } from './components/RoleGuard';
 import { ShellContext } from './context/ShellContext';
 import Sidebar from './components/Sidebar';
 import DashboardView from './views/DashboardView';
@@ -113,16 +114,21 @@ function Shell() {
             <Route path="/alerts" element={<AlertsView />} />
             <Route path="/calendar" element={<CalendarView />} />
             <Route path="/vendors" element={<VendorsView />} />
-            <Route path="/billing"  element={<BillingView  onToast={showToast} />} />
-            <Route path="/settings" element={<Settings onToast={showToast} />} />
-            <Route path="/settings/:section" element={<Settings onToast={showToast} />} />
-            <Route path="/reports" element={<ReportsView />} />
-            <Route path="/audit" element={<AuditView />} />
+            <Route path="/billing"  element={<RoleGuard minRole="admin"><BillingView onToast={showToast} /></RoleGuard>} />
+            <Route path="/settings" element={<RoleGuard minRole="admin"><Settings onToast={showToast} /></RoleGuard>} />
+            <Route path="/settings/:section" element={<RoleGuard minRole="admin"><Settings onToast={showToast} /></RoleGuard>} />
+            <Route path="/reports" element={<RoleGuard minRole="manager"><ReportsView /></RoleGuard>} />
+            <Route path="/audit" element={<RoleGuard minRole="admin"><AuditView /></RoleGuard>} />
             <Route path="/properties"     element={<Properties onToast={showToast} />} />
             <Route path="/properties/:id" element={<PropertyDetail onToast={showToast} />} />
-            <Route path="/settings/compliance-templates/:id" element={<ComplianceTemplateBuilder
-              onNavigateBack={() => navigate('/settings/compliance-templates')}
-              onToast={showToast} />}/>
+            <Route path="/settings/compliance-templates/:id" element={
+              <RoleGuard minRole="admin">
+                <ComplianceTemplateBuilder
+                  onNavigateBack={() => navigate('/settings/compliance-templates')}
+                  onToast={showToast} 
+                />
+              </RoleGuard>
+            }/>
               <Route path="/support" element={<Support onToast={showToast} />} />
           </Routes>
         </div>
