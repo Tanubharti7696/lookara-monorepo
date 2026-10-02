@@ -1,9 +1,10 @@
 // src/views/Settings.jsx
 import { useNavigate, useParams } from 'react-router-dom';
 import ComplianceTemplatesSection from './settings/ComplianceTemplatesSection';
-import NotificationsSection      from './settings/NotificationsSection';
-import PreferencesSection        from './settings/PreferencesSection';
-import TeamSection               from './settings/TeamSection';
+import OrganizationSection           from './settings/OrganizationSection';
+import NotificationsSection          from './settings/NotificationsSection';
+import PreferencesSection            from './settings/PreferencesSection';
+import TeamSection                   from './settings/TeamSection';
 import IntegrationsSection       from './settings/IntegrationsSection';
 import SecuritySection           from './settings/SecuritySection';
 import ReportsSection            from './settings/ReportsSection';
@@ -11,6 +12,8 @@ import SLATemplatesSection       from './settings/SLATemplatesSection';
 import './SettingsView.css';
 
 const SECTIONS = [
+  { key: 'organization',  label: 'Organization',         icon: '🏢', group: 'Workspace'   },
+  { key: 'team',          label: 'Team',                 icon: '👥', group: 'Workspace'   },
   { key: 'compliance',    label: 'Compliance Templates', icon: '📋', group: 'Workspace'   },
   { key: 'notifications', label: 'Notifications',        icon: '🔔', group: 'Workspace'   },
   { key: 'preferences',   label: 'Preferences',          icon: '⚙️', group: 'Workspace'   },
@@ -24,7 +27,7 @@ const SECTIONS = [
 export default function Settings({ onToast }) {
   const navigate = useNavigate();
   const { section } = useParams();
-  const active = section || 'compliance';
+  const active = section || 'organization';
 
   const groups = SECTIONS.reduce((acc, s) => {
     (acc[s.group] = acc[s.group] || []).push(s);
@@ -60,6 +63,7 @@ export default function Settings({ onToast }) {
       </aside>
 
       <main className="settings-main">
+        {active === 'organization'  && <OrganizationSection       onToast={onToast} />}
         {active === 'compliance'    && <ComplianceTemplatesSection onToast={onToast} />}
         {active === 'notifications' && <NotificationsSection      onToast={onToast} />}
         {active === 'preferences'   && <PreferencesSection        onToast={onToast} />}

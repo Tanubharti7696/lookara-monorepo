@@ -1,5 +1,5 @@
 // apps/backend/src/organizations/organizations.controller.ts
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Query, Body, UseGuards } from '@nestjs/common';
 import { OrganizationsService } from './organizations.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 
@@ -28,8 +28,28 @@ export class OrganizationsController {
     return this.orgsService.findOne(id);
   }
 
+  @Patch(':id')
+  async update(@Param('id') id: string, @Body() data: any) {
+    return this.orgsService.update(id, data);
+  }
+
   @Get(':id/users')
   async findUsers(@Param('id') id: string) {
     return this.orgsService.findUsers(id);
+  }
+
+  @Post(':id/users')
+  async addUser(@Param('id') orgId: string, @Body() data: any) {
+    return this.orgsService.addUser(orgId, data);
+  }
+
+  @Patch(':id/users/:userId')
+  async updateUser(@Param('id') orgId: string, @Param('userId') userId: string, @Body() data: any) {
+    return this.orgsService.updateUser(orgId, userId, data);
+  }
+
+  @Delete(':id/users/:userId')
+  async removeUser(@Param('id') orgId: string, @Param('userId') userId: string) {
+    return this.orgsService.removeUser(orgId, userId);
   }
 }
