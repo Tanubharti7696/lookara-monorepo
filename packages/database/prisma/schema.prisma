@@ -69,6 +69,7 @@ model Property {
   incidents           Incident[]
   approvals           Approval[]
   flags               Flag[]
+  vendorCoverage      VendorPropertyCoverage[]
 }
 
 model User {
@@ -159,6 +160,7 @@ model Vendor {
   documents           VendorDocument[]
   jobOffers           JobOffer[]
   jobAssignments      JobAssignment[]
+  propertyCoverage    VendorPropertyCoverage[]
   flags               Flag[]
   disputes            Dispute[]
 }
@@ -202,6 +204,19 @@ model VendorCoverageZone {
   createdAt           DateTime             @default(now())
 
   vendor              Vendor               @relation(fields: [vendorId], references: [id])
+}
+
+model VendorPropertyCoverage {
+  id                  String               @id @default(uuid())
+  vendorId            String
+  propertyId          String
+  status              String               // active, inactive
+  createdAt           DateTime             @default(now())
+
+  vendor              Vendor               @relation(fields: [vendorId], references: [id])
+  property            Property             @relation(fields: [propertyId], references: [id])
+
+  @@unique([vendorId, propertyId])
 }
 
 model VendorAvailability {

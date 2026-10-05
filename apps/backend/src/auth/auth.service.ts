@@ -21,9 +21,16 @@ import type { LoginDto, SwitchContextDto } from './dto/auth.dto';
 
 @Injectable()
 export class AuthService {
-  private readonly jwtSecret = process.env.JWT_SECRET || 'lookara-super-secret-jwt-key-2026';
-  private readonly jwtRefreshSecret =
-    process.env.JWT_REFRESH_SECRET || 'lookara-super-secret-refresh-jwt-key-2026';
+  private readonly jwtSecret: string;
+  private readonly jwtRefreshSecret: string;
+
+  constructor() {
+    if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
+      throw new Error('FATAL: JWT_SECRET and JWT_REFRESH_SECRET environment variables are required');
+    }
+    this.jwtSecret = process.env.JWT_SECRET;
+    this.jwtRefreshSecret = process.env.JWT_REFRESH_SECRET;
+  }
 
   /**
    * Log in user across any Lookara portal

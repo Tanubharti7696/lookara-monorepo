@@ -24,8 +24,8 @@ export default function TasksView() {
             name: t.title || 'Task',
             property: t.property_name || 'Assigned Property',
             city: t.city || 'Unknown',
-            trade: t.trade_code || t.trade || 'General',
-            severity: t.urgency ? t.urgency.toUpperCase() : 'MEDIUM',
+            trade: t.trade_code || 'General',
+            severity: t.severity ? t.severity.toUpperCase() : 'MEDIUM',
             state: t.status === 'open' ? 'pending' : (t.status === 'completed' ? 'completed' : 'active'),
             group: 'dispatch',
             due: 'Pending',
@@ -35,7 +35,7 @@ export default function TasksView() {
             sourceLabel: '✍ Manual',
             stripe: 'normal',
             priorityCls: 'normal',
-            priorityLabel: (t.urgency || 'MEDIUM').toUpperCase(),
+            priorityLabel: (t.severity || 'MEDIUM').toUpperCase(),
             ageDays: 0,
             description: t.description || '',
             createdAt: t.created_at || new Date().toISOString(),
@@ -78,7 +78,7 @@ export default function TasksView() {
     
     // API Call
     if (patch.state) {
-      const apiStatus = patch.state === 'completed' ? 'completed' : (patch.state === 'active' ? 'in_progress' : 'pending_dispatch');
+      const apiStatus = patch.state === 'completed' ? 'completed' : (patch.state === 'active' ? 'in_progress' : 'unassigned');
       apiFetch(`/api/v1/tasks/${openTaskId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -124,8 +124,10 @@ export default function TasksView() {
       propertyId: payload.propertyId || null,
       title: payload.title || payload.issue || `${payload.trade || 'General'} Task`,
       description: payload.description || payload.notes || '',
-      urgency: sev.toLowerCase(),
-      trade: payload.trade || 'general',
+      severity: sev.toLowerCase(),
+      tradeCode: payload.trade || 'general',
+      workflowClass: 'maintenance',
+      source: payload.mode === 'incident' ? 'incident' : 'pm_portal',
     };
     
     apiFetch('/api/v1/tasks', {

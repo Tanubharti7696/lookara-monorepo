@@ -1,5 +1,6 @@
 // src/views/EmergencyView.jsx
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { apiFetch } from '../utils/api';
 import PageHeader from '../components/PageHeader';
 import TriageCard from './emergency/TriageCard';
 import TaskDrawer from './tasks/drawer/TaskDrawer';
@@ -7,7 +8,7 @@ import AssignVendorOverlay from './tasks/drawer/overlays/AssignVendorOverlay';
 import RecordPaymentOverlay from './tasks/drawer/overlays/RecordPaymentOverlay';
 import VerifyWorkOverlay from './tasks/drawer/overlays/VerifyWorkOverlay';
 import { useTaskActions } from './tasks/drawer/useTaskActions';
-import { TASKS as INITIAL_TASKS, ARCHIVE_STATES } from '../data/tasks';
+import { ARCHIVE_STATES } from '../data/tasks';
 import './EmergencyView.css';
 
 /* ────────── Matchers ────────── */
@@ -58,13 +59,41 @@ const STATE_CHIPS = [
 ];
 
 export default function EmergencyView() {
-  const [tasks, setTasks] = useState(() => {
-    const saved = localStorage.getItem('lookara_pm_tasks');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { /* fallback */ }
-    }
-    return [];
-  });
+  const [tasks, setTasks] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    apiFetch('/api/v1/tasks?urgency=emergency')
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.data) {
+          const mapped = data.data.map(t => ({
+            id: t.id,
+            name: t.title || 'Task',
+            property: t.property_name || 'Assigned Property',
+            city: t.city || 'Unknown',
+            trade: t.trade_code || 'General',
+            severity: t.severity ? t.severity.toUpperCase() : 'CRITICAL',
+            state: t.status === 'open' ? 'pending' : (t.status === 'completed' ? 'completed' : 'active'),
+            group: 'dispatch',
+            due: 'Pending',
+            slaStatus: 'OVERDUE', // Simplification for now
+            vendor: null,
+            sourceCls: 'incident',
+            sourceLabel: '🚨 Incident',
+            stripe: 'critical',
+            priorityCls: 'critical',
+            priorityLabel: (t.severity || 'CRITICAL').toUpperCase(),
+            ageDays: 0,
+            description: t.description || '',
+            createdAt: t.created_at || new Date().toISOString(),
+          }));
+          setTasks(mapped);
+        }
+      })
+      .catch(console.error)
+      .finally(() => setIsLoading(false));
+  }, []);
   const [strictMode, setStrictMode] = useState(false);
   const [sortBy, setSortBy]         = useState('priority');
   const [sevFilter, setSevFilter]   = useState('all');
@@ -80,9 +109,16 @@ export default function EmergencyView() {
   const updateTask = (id, patch) => {
     setTasks(list => {
       const updated = list.map(t => (t.id === id ? { ...t, ...patch } : t));
-      localStorage.setItem('lookara_pm_tasks', JSON.stringify(updated));
       return updated;
     });
+    if (patch.state) {
+      const apiStatus = patch.state === 'completed' ? 'completed' : (patch.state === 'active' ? 'in_progress' : 'unassigned');
+      apiFetch(`/api/v1/tasks/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: apiStatus })
+      }).catch(console.error);
+    }
   };
 
   /* Base emergency pool */
@@ -171,9 +207,17 @@ export default function EmergencyView() {
           </div>
         )}
 
-        {/* Count strip */}
-        <div className="em-counts">
-          <CountTile label="Active Emergencies" value={counts.total}      tone="gold"    accent />
+        {isLoading ? (
+          <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-dim)' }}>
+            <div className="spinner" style={{ margin: '0 auto 1rem', width: '24px', height: '24px', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: 'var(--brand-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+            Loading emergency tasks...
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        ) : (
+          <>
+            {/* Count strip */}
+            <div className="em-counts">
+              <CountTile label="Active Emergencies" value={counts.total}      tone="gold"    accent />
           <CountTile label="Critical"           value={counts.critical}   tone="crimson" />
           <CountTile label="SLA Overdue"        value={counts.overdue}    tone="crimson" />
           <CountTile label="Blocked / Escalated" value={counts.blocked}   tone="amber"   />
@@ -268,6 +312,8 @@ export default function EmergencyView() {
               />
             ))}
           </div>
+        )}
+          </>
         )}
       </div>
 

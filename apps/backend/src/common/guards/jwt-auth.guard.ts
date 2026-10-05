@@ -17,7 +17,10 @@ export class JwtAuthGuard implements CanActivate {
   private readonly jwtSecret: string;
 
   constructor(private reflector: Reflector) {
-    this.jwtSecret = process.env.JWT_SECRET || 'lookara-super-secret-jwt-key-2026';
+    if (!process.env.JWT_SECRET) {
+      throw new Error('FATAL: JWT_SECRET environment variable is required');
+    }
+    this.jwtSecret = process.env.JWT_SECRET;
   }
 
   canActivate(context: ExecutionContext): boolean {

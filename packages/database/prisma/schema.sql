@@ -217,6 +217,15 @@ CREATE TABLE IF NOT EXISTS vendor_documents (
 CREATE INDEX IF NOT EXISTS idx_vendor_documents_vendor ON vendor_documents(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_vendor_documents_review ON vendor_documents(review_status);
 
+CREATE TABLE IF NOT EXISTS vendor_property_coverage (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  vendor_id UUID NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+  property_id UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('active', 'inactive')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(vendor_id, property_id)
+);
+
 -- 10. Jobs / Tasks & Dispatch
 CREATE TABLE IF NOT EXISTS jobs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -225,10 +234,12 @@ CREATE TABLE IF NOT EXISTS jobs (
   property_id UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
   created_by_user_id UUID REFERENCES users(id),
   trade_code TEXT NOT NULL,
-  skill_code TEXT,
+  workflow_class TEXT NOT NULL,
+  subtype TEXT,
+  severity TEXT NOT NULL,
+  source TEXT NOT NULL,
   title TEXT NOT NULL,
   description TEXT,
-  urgency TEXT NOT NULL CHECK (urgency IN ('emergency','standard','flexible')),
   service_type TEXT NOT NULL,
   payout_amount NUMERIC(12,2),
   quote_required BOOLEAN NOT NULL DEFAULT false,
@@ -237,10 +248,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   scheduled_start TIMESTAMPTZ,
   estimated_duration_minutes INTEGER,
   status TEXT NOT NULL CHECK (status IN (
-    'pending_dispatch',
-    'phase_1',
-    'phase_2',
-    'open_pool',
+    'unassigned',
+    'dispatching',
     'assigned',
     'accepted',
     'in_progress',

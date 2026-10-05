@@ -7,10 +7,12 @@ import type { JwtPayload } from '@lookara/auth';
 export interface CreateTaskDto {
   propertyId: string;
   tradeCode: string;
-  skillCode?: string;
+  workflowClass: string;
+  subtype?: string;
+  severity: string;
+  source: string;
   title: string;
   description?: string;
-  urgency: 'emergency' | 'standard' | 'flexible';
   serviceType: string;
   payoutAmount?: number;
   scheduledStart?: string;
@@ -18,12 +20,13 @@ export interface CreateTaskDto {
 }
 
 const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  pending_dispatch: ['assigned', 'cancelled', 'in_progress', 'completed'],
-  assigned: ['accepted', 'pending_dispatch', 'cancelled', 'in_progress'],
+  unassigned: ['dispatching', 'assigned', 'cancelled'],
+  dispatching: ['assigned', 'unassigned', 'cancelled'],
+  assigned: ['accepted', 'unassigned', 'cancelled'],
   accepted: ['in_progress', 'cancelled', 'escalated'],
-  in_progress: ['completed', 'verification_pending', 'escalated', 'cancelled', 'pending_dispatch'],
+  in_progress: ['completed', 'verification_pending', 'escalated', 'cancelled'],
   verification_pending: ['completed', 'in_progress', 'escalated'],
-  completed: ['closed', 'escalated', 'in_progress', 'pending_dispatch'],
+  completed: ['closed', 'escalated', 'in_progress'],
   closed: [],
   cancelled: [],
   escalated: ['assigned', 'closed'],
@@ -71,7 +74,7 @@ export class TasksService {
       values.push(options.status);
     }
     if (options.urgency) {
-      conditions.push(`j.urgency = $${idx++}`);
+      conditions.push(`j.severity = $${idx++}`);
       values.push(options.urgency);
     }
 
@@ -137,10 +140,10 @@ export class TasksService {
     const sql = `
       INSERT INTO jobs (
         job_code, organization_id, property_id, created_by_user_id,
-        trade_code, skill_code, title, description, urgency, service_type,
+        trade_code, workflow_class, subtype, severity, source, title, description, service_type,
         payout_amount, scheduled_start, estimated_duration_minutes, status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'pending_dispatch')
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'unassigned')
       RETURNING *;
     `;
     const res = await query(sql, [
@@ -149,10 +152,12 @@ export class TasksService {
       dto.propertyId,
       user.sub,
       dto.tradeCode || 'GEN',
-      dto.skillCode || null,
+      dto.workflowClass || 'maintenance',
+      dto.subtype || null,
+      dto.severity || 'low',
+      dto.source || 'pm_portal',
       dto.title,
       dto.description || null,
-      ['critical', 'high', 'emergency'].includes((dto.urgency || '').toLowerCase()) ? 'emergency' : ['low', 'flexible'].includes((dto.urgency || '').toLowerCase()) ? 'flexible' : 'standard',
       dto.serviceType || 'maintenance',
       dto.payoutAmount || null,
       dto.scheduledStart ? new Date(dto.scheduledStart) : null,
@@ -169,7 +174,7 @@ export class TasksService {
       category: 'task',
       eventType: 'task.created',
       summary: `Task ${task.job_code} (${task.title}) created`,
-      metadata: { urgency: task.urgency, propertyId: task.property_id },
+      metadata: { severity: task.severity, propertyId: task.property_id },
     });
 
     return task;
