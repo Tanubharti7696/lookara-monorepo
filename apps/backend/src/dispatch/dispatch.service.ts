@@ -16,7 +16,7 @@ export class DispatchService {
     if (jobRes.rows.length === 0) throw new NotFoundException('Task not found');
     const job = jobRes.rows[0];
 
-    const orgId = user.organizationId;
+    const orgId = user.activeOrganizationId;
     if (job.organization_id !== orgId) {
       throw new ForbiddenException('You do not have access to this task');
     }
