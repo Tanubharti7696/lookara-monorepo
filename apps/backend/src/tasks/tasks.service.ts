@@ -165,6 +165,40 @@ export class TasksService {
     ]);
     const task = res.rows[0];
 
+    // SLA Snapshotting Logic
+    // 1. Try to find a property override SLA
+    let slaRes = await query(
+      `SELECT st.* FROM sla_templates st
+       JOIN property_sla_overrides pso ON st.id = pso.sla_template_id
+       WHERE pso.property_id = $1`,
+      [dto.propertyId]
+    );
+
+    // 2. If no override, try to find an org-level SLA matching severity
+    if (slaRes.rows.length === 0) {
+      slaRes = await query(
+        `SELECT * FROM sla_templates WHERE organization_id = $1 AND severity = $2 LIMIT 1`,
+        [orgId, dto.severity || 'low']
+      );
+    }
+
+    if (slaRes.rows.length > 0) {
+      const sla = slaRes.rows[0];
+      const now = new Date();
+      
+      const ackTarget = new Date(now.getTime() + sla.acknowledge_mins * 60000);
+      const arrTarget = new Date(now.getTime() + sla.arrival_mins * 60000);
+      const compTarget = new Date(now.getTime() + sla.completion_mins * 60000);
+      const verTarget = new Date(now.getTime() + sla.verification_mins * 60000);
+
+      await query(
+        `INSERT INTO job_sla_snapshots (
+          job_id, sla_template_id, acknowledge_target, arrival_target, completion_target, verification_target
+         ) VALUES ($1, $2, $3, $4, $5, $6)`,
+        [task.id, sla.id, ackTarget, arrTarget, compTarget, verTarget]
+      );
+    }
+
     // Audit log
     await this.auditService.recordEvent({
       actorType: 'pm',

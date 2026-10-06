@@ -31,8 +31,10 @@ model Organization {
   jobs                Job[]
   incidents           Incident[]
   approvals           Approval[]
+  approvals           Approval[]
   disputes            Dispute[]
   flags               Flag[]
+  slaTemplates        SlaTemplate[]
 }
 
 model Property {
@@ -70,6 +72,7 @@ model Property {
   approvals           Approval[]
   flags               Flag[]
   vendorCoverage      VendorPropertyCoverage[]
+  slaOverride         PropertySlaOverride?
 }
 
 model User {
@@ -283,6 +286,7 @@ model Job {
   assignments              JobAssignment[]
   incidents                Incident[]
   approvals                Approval[]
+  slaSnapshot              JobSlaSnapshot?
 }
 
 model JobOffer {
@@ -517,4 +521,49 @@ model AuditEvent {
   createdAt           DateTime             @default(now())
 
   user                User?                @relation(fields: [actorUserId], references: [id])
+}
+
+// ----------------------------------------------------------------------------
+// SLAs
+// ----------------------------------------------------------------------------
+
+model SlaTemplate {
+  id                  String       @id @default(uuid())
+  organizationId      String?
+  name                String
+  severity            String       // critical, high, medium, low
+  acknowledgeMins     Int
+  arrivalMins         Int
+  completionMins      Int
+  verificationMins    Int
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  organization        Organization? @relation(fields: [organizationId], references: [id])
+  properties          PropertySlaOverride[]
+  jobSnapshots        JobSlaSnapshot[]
+}
+
+model PropertySlaOverride {
+  id                  String       @id @default(uuid())
+  propertyId          String       @unique
+  slaTemplateId       String
+  createdAt           DateTime     @default(now())
+
+  property            Property     @relation(fields: [propertyId], references: [id])
+  slaTemplate         SlaTemplate  @relation(fields: [slaTemplateId], references: [id])
+}
+
+model JobSlaSnapshot {
+  id                  String       @id @default(uuid())
+  jobId               String       @unique
+  slaTemplateId       String?
+  acknowledgeTarget   DateTime?
+  arrivalTarget       DateTime?
+  completionTarget    DateTime?
+  verificationTarget  DateTime?
+  createdAt           DateTime     @default(now())
+
+  job                 Job          @relation(fields: [jobId], references: [id])
+  slaTemplate         SlaTemplate? @relation(fields: [slaTemplateId], references: [id])
 }

@@ -420,3 +420,37 @@ ALTER TABLE properties ADD COLUMN IF NOT EXISTS owner_name TEXT;
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS owner_email TEXT;
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS manager_name TEXT;
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS compliance_template TEXT;
+
+-- 11. SLAs
+CREATE TABLE IF NOT EXISTS sla_templates (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  acknowledge_mins INTEGER NOT NULL,
+  arrival_mins INTEGER NOT NULL,
+  completion_mins INTEGER NOT NULL,
+  verification_mins INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS property_sla_overrides (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  property_id UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  sla_template_id UUID NOT NULL REFERENCES sla_templates(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(property_id)
+);
+
+CREATE TABLE IF NOT EXISTS job_sla_snapshots (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  sla_template_id UUID REFERENCES sla_templates(id),
+  acknowledge_target TIMESTAMPTZ,
+  arrival_target TIMESTAMPTZ,
+  completion_target TIMESTAMPTZ,
+  verification_target TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(job_id)
+);
