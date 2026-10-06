@@ -28,8 +28,8 @@ export class DashboardService {
       SELECT
         (SELECT count(*) FROM properties ${orgFilter}) as total_properties,
         (SELECT count(*) FROM properties WHERE status = 'active' ${orgId ? `AND organization_id = '${orgId}'` : ''}) as active_properties,
-        (SELECT count(*) FROM jobs WHERE status IN ('pending_dispatch', 'assigned', 'accepted', 'in_progress') ${orgId ? `AND organization_id = '${orgId}'` : ''}) as active_jobs,
-        (SELECT count(*) FROM jobs WHERE urgency = 'emergency' AND status NOT IN ('completed', 'closed', 'cancelled') ${orgId ? `AND organization_id = '${orgId}'` : ''}) as emergency_jobs,
+        (SELECT count(*) FROM jobs WHERE status IN ('unassigned', 'dispatching', 'assigned', 'accepted', 'in_progress') ${orgId ? `AND organization_id = '${orgId}'` : ''}) as active_jobs,
+        (SELECT count(*) FROM jobs WHERE severity = 'critical' AND status NOT IN ('completed', 'closed', 'cancelled') ${orgId ? `AND organization_id = '${orgId}'` : ''}) as emergency_jobs,
         (SELECT count(*) FROM incidents WHERE status IN ('open', 'in_progress') ${orgId ? `AND organization_id = '${orgId}'` : ''}) as active_incidents,
         (SELECT count(*) FROM approvals WHERE status = 'awaiting_owner_decision' ${orgId ? `AND organization_id = '${orgId}'` : ''}) as pending_approvals
     `;
@@ -38,10 +38,10 @@ export class DashboardService {
 
     // Urgent action items
     const urgentTasksRes = await query(`
-      SELECT j.id, j.job_code, j.title, j.urgency, j.status, p.name as property_name
+      SELECT j.id, j.job_code, j.title, j.severity as urgency, j.status, p.name as property_name
       FROM jobs j
       JOIN properties p ON j.property_id = p.id
-      WHERE j.urgency = 'emergency' AND j.status IN ('pending_dispatch', 'assigned', 'in_progress')
+      WHERE j.severity = 'critical' AND j.status IN ('unassigned', 'dispatching', 'assigned', 'in_progress')
         ${orgId ? `AND j.organization_id = '${orgId}'` : ''}
       LIMIT 5
     `);
