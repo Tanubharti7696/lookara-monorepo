@@ -1,5 +1,6 @@
 // src/views/CalendarView.jsx
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { apiFetch } from '../utils/api';
 import CalendarTopBar from './calendar/CalendarTopBar';
 import OpsStrip from './calendar/OpsStrip';
 import WeekView from './calendar/WeekView';
@@ -16,6 +17,23 @@ export default function CalendarView() {
   const [dayKey, setDayKey]       = useState('Jan-16');
   const [turnoverKey, setTurnover] = useState(null);
   const [toast, setToast]         = useState(null);
+  const [lanes, setLanes]         = useState([]);
+  const [loading, setLoading]     = useState(true);
+
+  useEffect(() => {
+    const startStr = WEEK_START.toISOString().split('T')[0];
+    const end = new Date(WEEK_START);
+    end.setDate(WEEK_START.getDate() + 6);
+    const endStr = end.toISOString().split('T')[0];
+
+    apiFetch(`/api/v1/calendar/lanes?start=${startStr}&end=${endStr}`)
+      .then(res => res.json())
+      .then(data => {
+        setLanes(data);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
 
   const showToast = (msg, type = 'info') => {
     setToast({ msg, type });
@@ -64,8 +82,10 @@ export default function CalendarView() {
       <OpsStrip />
 
       <div className="calendar-body">
-        {view === 'week'   && (
+        {loading && <div style={{ padding: '24px' }}>Loading calendar data...</div>}
+        {!loading && view === 'week'   && (
           <WeekView
+            lanes={lanes}
             search={search}
             onOpenDay={handleOpenDay}
             onOpenTurnover={setTurnover}

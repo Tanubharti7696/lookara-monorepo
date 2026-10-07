@@ -12,6 +12,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { VendorsModule } from './vendors/vendors.module';
 import { IncidentsModule } from './incidents/incidents.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { CalendarModule } from './calendar/calendar.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     ComplianceModule,
     IncidentsModule,
     NotificationsModule,
+    CalendarModule,
   ],
   controllers: [AppController],
   providers: [AppService],

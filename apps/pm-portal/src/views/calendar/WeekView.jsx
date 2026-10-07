@@ -1,7 +1,6 @@
-// src/views/calendar/WeekView.jsx
-import { WEEK_LANES, WEEK_START } from '../../data/calendar';
+import { WEEK_START } from '../../data/calendar';
 
-export default function WeekView({ search, onOpenDay, onOpenTurnover, onToast, onOpenTask }) {
+export default function WeekView({ lanes = [], search, onOpenDay, onOpenTurnover, onToast, onOpenTask }) {
   const term = search.trim().toLowerCase();
 
   // Day headers: Mon Jan 12 ... Sun Jan 18
@@ -15,7 +14,7 @@ export default function WeekView({ search, onOpenDay, onOpenTurnover, onToast, o
   });
 
   // Filter lanes by search
-  const visibleLanes = WEEK_LANES.filter(lane => {
+  const visibleLanes = lanes.filter(lane => {
     if (!term) return true;
     const text = lane.name.toLowerCase();
     if (term === 'offline') return lane.offline === true;

@@ -482,3 +482,20 @@ CREATE TABLE IF NOT EXISTS property_compliance_documents (
   is_verified BOOLEAN NOT NULL DEFAULT false,
   uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Calendar & Bookings (Phase 5)
+CREATE TABLE IF NOT EXISTS bookings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    property_id UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL DEFAULT 'guest_stay', -- guest_stay, owner_stay, block
+    status VARCHAR(50) NOT NULL DEFAULT 'confirmed', -- confirmed, pending, cancelled
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    guest_name VARCHAR(255),
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_bookings_org ON bookings(organization_id);
+CREATE INDEX IF NOT EXISTS idx_bookings_property ON bookings(property_id);
