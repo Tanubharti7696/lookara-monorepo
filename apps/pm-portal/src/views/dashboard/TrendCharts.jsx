@@ -4,9 +4,6 @@ import {
   setupCanvas, clearCanvas, makeLinearScale, drawChartFrame,
   drawLine, drawArea, drawBand, drawForecast, drawMultiLine,
 } from '../../utils/charts';
-import { dashboardData } from '../../data/dashboardData';
-
-const T = dashboardData.trends;
 
 /* ── Generic Trend Card wrapper ── */
 function TrendCard({ tone, title, value, delta, deltaTone, context, legend, children }) {
@@ -34,13 +31,14 @@ function TrendCard({ tone, title, value, delta, deltaTone, context, legend, chil
 }
 
 /* ── 1. Occupancy Chart ── */
-function OccupancyChart() {
+function OccupancyChart({ data }) {
   const ref = useChart((canvas) => {
+    if (!data) return;
     const { ctx, w, h } = setupCanvas(canvas);
     clearCanvas(ctx, w, h);
 
-    const history = T.occupancy.history.map(p => p.v);
-    const forecast = T.occupancy.forecast.map(p => p.v);
+    const history = data.history.map(p => p.v);
+    const forecast = data.forecast.map(p => p.v);
     const combined = [...history, ...forecast];
     const min = Math.min(...combined) - 2;
     const max = Math.max(...combined) + 2;
@@ -64,19 +62,20 @@ function OccupancyChart() {
 
     // dotted forecast
     drawForecast(ctx, plot, history, forecast, yScale, 'rgba(212,175,55,.65)');
-  }, []);
+  }, [data]);
 
   return <canvas ref={ref} className="tcc__canvas" />;
 }
 
 /* ── 2. SLA Chart ── */
-function SlaChart() {
+function SlaChart({ data }) {
   const ref = useChart((canvas) => {
+    if (!data) return;
     const { ctx, w, h } = setupCanvas(canvas);
     clearCanvas(ctx, w, h);
 
-    const history = T.sla.history.map(p => p.v);
-    const forecast = T.sla.forecast.map(p => p.v);
+    const history = data.history.map(p => p.v);
+    const forecast = data.forecast.map(p => p.v);
     const yScale = makeLinearScale(0, Math.max(...history, ...forecast) * 1.3, 5);
 
     const plot = drawChartFrame(ctx, w, h, {
@@ -95,28 +94,30 @@ function SlaChart() {
       markerColor: 'rgba(220,38,38,.95)',
     });
     drawForecast(ctx, plot, history, forecast, yScale, 'rgba(212,175,55,.55)');
-  }, []);
+  }, [data]);
 
   return <canvas ref={ref} className="tcc__canvas" />;
 }
 
 /* ── 3. Compliance multi-line chart ── */
-function ComplianceChart() {
+function ComplianceChart({ data }) {
   const ref = useChart((canvas) => {
-    drawMultiLine(canvas, T.compliance.series, 60, 100);
-  }, []);
+    if (!data) return;
+    drawMultiLine(canvas, data.series, 60, 100);
+  }, [data]);
 
   return <canvas ref={ref} className="tcc__canvas" />;
 }
 
 /* ── 4. Vendor chart ── */
-function VendorChart() {
+function VendorChart({ data }) {
   const ref = useChart((canvas) => {
+    if (!data) return;
     const { ctx, w, h } = setupCanvas(canvas);
     clearCanvas(ctx, w, h);
 
-    const history = T.vendor.history.map(p => p.v);
-    const forecast = T.vendor.forecast.map(p => p.v);
+    const history = data.history.map(p => p.v);
+    const forecast = data.forecast.map(p => p.v);
     const yScale = makeLinearScale(Math.min(...history) - 2, Math.max(...history) + 3, 5);
 
     const plot = drawChartFrame(ctx, w, h, {
@@ -134,13 +135,16 @@ function VendorChart() {
       width: 2.4, points: true, pointEvery: 4, lastMarker: true,
     });
     drawForecast(ctx, plot, history, forecast, yScale, 'rgba(34,197,94,.55)');
-  }, []);
+  }, [data]);
 
   return <canvas ref={ref} className="tcc__canvas" />;
 }
 
 /* ── Section ── */
-export default function TrendCharts() {
+export default function TrendCharts({ trends }) {
+  if (!trends) return <section className="dashboard-section"><div style={{padding: '2rem'}}>Loading trends...</div></section>;
+
+  const T = trends;
   return (
     <section className="dashboard-section">
       <div className="dashboard-section__label">Operational Trends · 30-Day</div>
@@ -148,46 +152,46 @@ export default function TrendCharts() {
         <TrendCard
           tone="green"
           title="Occupancy Context"
-          value={T.occupancy.value}
-          delta={T.occupancy.delta}
-          deltaTone={T.occupancy.deltaTone}
-          context={T.occupancy.context}
+          value={T.occupancy?.value}
+          delta={T.occupancy?.delta}
+          deltaTone={T.occupancy?.deltaTone}
+          context={T.occupancy?.context}
         >
-          <OccupancyChart />
+          <OccupancyChart data={T.occupancy} />
         </TrendCard>
 
         <TrendCard
           tone="red"
           title="SLA Pressure Health"
-          value={T.sla.value}
-          delta={T.sla.delta}
-          deltaTone={T.sla.deltaTone}
-          context={T.sla.context}
+          value={T.sla?.value}
+          delta={T.sla?.delta}
+          deltaTone={T.sla?.deltaTone}
+          context={T.sla?.context}
         >
-          <SlaChart />
+          <SlaChart data={T.sla} />
         </TrendCard>
 
         <TrendCard
           tone="amber"
           title="Compliance Health"
-          value={T.compliance.value}
-          delta={T.compliance.delta}
-          deltaTone={T.compliance.deltaTone}
-          legend={T.compliance.legend}
+          value={T.compliance?.value}
+          delta={T.compliance?.delta}
+          deltaTone={T.compliance?.deltaTone}
+          legend={T.compliance?.legend}
         >
-          <ComplianceChart />
+          <ComplianceChart data={T.compliance} />
         </TrendCard>
 
         <TrendCard
           tone="gold"
           title="Vendor Health"
-          value={T.vendor.value}
-          delta={T.vendor.delta}
-          deltaTone={T.vendor.deltaTone}
-          context={T.vendor.context}
-          legend={T.vendor.legend}
+          value={T.vendor?.value}
+          delta={T.vendor?.delta}
+          deltaTone={T.vendor?.deltaTone}
+          context={T.vendor?.context}
+          legend={T.vendor?.legend}
         >
-          <VendorChart />
+          <VendorChart data={T.vendor} />
         </TrendCard>
       </div>
     </section>

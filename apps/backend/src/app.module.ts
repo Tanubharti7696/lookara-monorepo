@@ -13,6 +13,7 @@ import { VendorsModule } from './vendors/vendors.module';
 import { IncidentsModule } from './incidents/incidents.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { CalendarModule } from './calendar/calendar.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { CalendarModule } from './calendar/calendar.module';
     IncidentsModule,
     NotificationsModule,
     CalendarModule,
+    ReportsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

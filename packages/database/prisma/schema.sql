@@ -527,3 +527,15 @@ CREATE TABLE IF NOT EXISTS template_requirements (
 );
 CREATE INDEX IF NOT EXISTS idx_template_requirements_tmpl ON template_requirements(template_id);
 
+-- Analytics & Reports (Phase 7)
+CREATE TABLE IF NOT EXISTS reports (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(50) NOT NULL, -- 'operational', 'financial', 'compliance'
+    parameters JSONB DEFAULT '{}',
+    status VARCHAR(50) NOT NULL DEFAULT 'ready',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_reports_org ON reports(organization_id);
+

@@ -14,15 +14,21 @@ import './DashboardView.css';
 export default function DashboardView() {
   const navigate = useNavigate();
   const [metrics, setMetrics] = useState(null);
+  const [trends, setTrends] = useState(null);
   const [loading, setLoading] = useState(true);
   const [ddOpen, setDdOpen] = useState(false);
   const [search, setSearch] = useState('');
   const wrapRef = useRef(null);
 
   useEffect(() => {
-    apiFetch('/api/v1/dashboard/metrics')
-      .then(res => res.json())
-      .then(data => setMetrics(data))
+    Promise.all([
+      apiFetch('/api/v1/dashboard/metrics').then(res => res.json()),
+      apiFetch('/api/v1/reports/dashboard-trends').then(res => res.json())
+    ])
+      .then(([metricsData, trendsData]) => {
+        setMetrics(metricsData);
+        setTrends(trendsData);
+      })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
   }, []);
@@ -138,9 +144,9 @@ export default function DashboardView() {
             <CriticalBanner onNavigate={onNavigate} metrics={metrics} />
             <HealthScoreBar metrics={metrics} />
             <OperationalSnapshot onNavigate={onNavigate} metrics={metrics} />
-            <TrendCharts />
+            <TrendCharts trends={trends?.trends} />
             <OperationalBriefing onNavigate={onNavigate} metrics={metrics} />
-            <HealthDetails />
+            <HealthDetails trends={trends} />
             <FinancialPreview onNavigate={onNavigate} />
           </>
         )}

@@ -1,8 +1,7 @@
 // src/views/dashboard/HealthDetails.jsx
 import { useState } from 'react';
-import { dashboardData } from '../../data/dashboardData';
 
-export default function HealthDetails() {
+export default function HealthDetails({ trends }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -22,14 +21,22 @@ export default function HealthDetails() {
             <div className="scorecard__metric">Metric</div>
             <div className="scorecard__current">Current</div>
           </div>
-          {dashboardData.healthScorecard.map((r, i) => (
-            <div key={i} className="scorecard__row">
-              <div className="scorecard__metric">{r.metric}</div>
-              <div className={`scorecard__current scorecard__current--${r.tone}`}>
-                {r.value}
-              </div>
-            </div>
-          ))}
+          <div className="scorecard__row">
+            <div className="scorecard__metric">Operational Health</div>
+            <div className="scorecard__current scorecard__current--neutral">{trends?.operationalHealth || 0}/100</div>
+          </div>
+          <div className="scorecard__row">
+            <div className="scorecard__metric">Avg Resolution Time</div>
+            <div className="scorecard__current scorecard__current--neutral">{trends?.resolutionTimeAvg || '—'}</div>
+          </div>
+          <div className="scorecard__row">
+            <div className="scorecard__metric">Compliance Score</div>
+            <div className="scorecard__current scorecard__current--good">{trends?.complianceScore || 0}%</div>
+          </div>
+          <div className="scorecard__row">
+            <div className="scorecard__metric">Burn Rate</div>
+            <div className="scorecard__current scorecard__current--neutral">{trends?.burnRate || '—'}</div>
+          </div>
         </div>
       </div>
     </section>
