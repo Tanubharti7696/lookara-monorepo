@@ -1,5 +1,5 @@
-// src/views/BillingView.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiFetch } from '../utils/api';
 import AccountStatusCard from './billing/AccountStatusCard';
 import CurrentPlanCard from './billing/CurrentPlanCard';
 import UsageCard from './billing/UsageCard';
@@ -10,6 +10,8 @@ import { ACCOUNT_DATA, ADDONS, STATUS_META, STATUS_OPTIONS } from '../data/billi
 import './BillingView.css';
 
 export default function BillingView({ canAdmin = true, onToast }) {
+  const [billingData, setBillingData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [status, setStatus]       = useState('active');
   const [modal, setModal]         = useState(null);
   const [addons, setAddons]       = useState(() => {
@@ -20,6 +22,24 @@ export default function BillingView({ canAdmin = true, onToast }) {
   const [search, setSearch]       = useState('');
 
   const meta = STATUS_META[status];
+
+  const fetchBilling = () => {
+    setLoading(true);
+    apiFetch('/api/v1/billing')
+      .then(res => res.json())
+      .then(data => {
+        setBillingData(data);
+        if (data?.subscription?.status) {
+          setStatus(data.subscription.status);
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchBilling();
+  }, []);
 
   const toggleAddon = (key, val) => setAddons(a => ({ ...a, [key]: { on: val } }));
 
@@ -100,9 +120,10 @@ Payment Method: Visa ending in 4242
         />
 
         <UsageCard data={ACCOUNT_DATA} />
-        <BillingHistoryCard onDownloadInvoice={downloadInvoice} />
+        <BillingHistoryCard onDownloadInvoice={downloadInvoice} invoices={billingData?.invoices || []} />
         <PaymentMethodCard
           canAdmin={canAdmin}
+          paymentMethod={billingData?.paymentMethods?.[0]}
           onUpdateCard={() => setModal('updateCard')}
         />
       </div>
@@ -131,7 +152,22 @@ Payment Method: Visa ending in 4242
       {modal === 'updateCard' && (
         <UpdateCardModal
           onClose={() => setModal(null)}
-          onSave={(card) => onToast(`Payment method updated to ${card.cardType} ending in ${card.last4}`, 'success')}
+          onSave={(card) => {
+            apiFetch('/api/v1/billing/payment-methods', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'card',
+                lastFour: card.last4,
+                brand: card.cardType,
+                isDefault: true
+              })
+            }).then(() => {
+              onToast(`Payment method updated to ${card.cardType} ending in ${card.last4}`, 'success');
+              fetchBilling();
+              setModal(null);
+            });
+          }}
           onToast={onToast}
         />
       )}

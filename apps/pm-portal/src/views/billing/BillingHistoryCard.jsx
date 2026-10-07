@@ -1,7 +1,5 @@
 // src/views/billing/BillingHistoryCard.jsx
-import { INVOICES } from '../../data/billing';
-
-export default function BillingHistoryCard({ onDownloadInvoice }) {
+export default function BillingHistoryCard({ onDownloadInvoice, invoices = [] }) {
   return (
     <div className="bs-card">
       <div className="bs-card__topline">
@@ -21,11 +19,11 @@ export default function BillingHistoryCard({ onDownloadInvoice }) {
             </tr>
           </thead>
           <tbody>
-            {INVOICES.map(inv => (
+            {invoices.map(inv => (
               <tr key={inv.id}>
-                <td>{inv.date}</td>
-                <td className="bs-table__muted">{inv.description}</td>
-                <td className="bs-table__amount">${inv.amount.toFixed(2)}</td>
+                <td>{new Date(inv.created_at).toLocaleDateString()}</td>
+                <td className="bs-table__muted">Subscription Charge</td>
+                <td className="bs-table__amount">${parseFloat(inv.amount).toFixed(2)}</td>
                 <td style={{ textAlign: 'center' }}>
                   <span className="bs-pill bs-pill--paid">{inv.status}</span>
                 </td>

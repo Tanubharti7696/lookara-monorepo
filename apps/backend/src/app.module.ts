@@ -14,6 +14,7 @@ import { IncidentsModule } from './incidents/incidents.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { ReportsModule } from './reports/reports.module';
+import { BillingModule } from './billing/billing.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ReportsModule } from './reports/reports.module';
     NotificationsModule,
     CalendarModule,
     ReportsModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
