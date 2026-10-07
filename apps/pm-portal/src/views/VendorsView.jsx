@@ -12,67 +12,80 @@ import AttachSheet from './vendors/AttachSheet';
 import DispatchSheet from './vendors/DispatchSheet';
 import MoreSheet from './vendors/MoreSheet';
 import DependencyWarning from './vendors/DependencyWarning';
-import { VENDOR_ATTACHMENTS, VD as MOCK_VD, PROPERTIES } from '../data/vendors';
+import { PROPERTIES } from '../data/vendors';
 import './VendorsView.css';
 
 export default function VendorsView() {
   const [tab, setTab]                   = useState('coverage');
-  const [attachments, setAttachments]   = useState(VENDOR_ATTACHMENTS);
-  const [sheet, setSheet]               = useState(null); // 'vendorDetail'|'attach'|'dispatch'|'more'|null
+  const [attachments, setAttachments]   = useState({});
+  const [sheet, setSheet]               = useState(null);
   const [sheetData, setSheetData]       = useState({});
   const [selectedProperty, setProperty] = useState(null);
   const [depWarning, setDepWarning]     = useState(null);
   const [toast, setToast]               = useState(null);
-  const [VD, setVD]                     = useState(MOCK_VD);
+  const [VD, setVD]                     = useState({});
   const [loading, setLoading]           = useState(true);
 
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [vendorsRes, coverageRes] = await Promise.all([
+        apiFetch('/api/v1/vendors').then(r => r.json()),
+        apiFetch('/api/v1/vendors/coverage').then(r => r.json())
+      ]);
+      
+      if (vendorsRes?.data) {
+        const liveVD = {};
+        vendorsRes.data.forEach(v => {
+          liveVD[v.id] = {
+            name: v.name,
+            sub: `${v.trade_count > 0 ? 'Multi-trade' : 'Specialty'} · ${v.tier}`,
+            conf: v.org_status === 'active' || v.org_status === 'preferred' ? 'HIGH CONFIDENCE' : 'MODERATE',
+            confCls: v.org_status === 'active' || v.org_status === 'preferred' ? 'high' : 'mod',
+            confSub: v.org_status === 'preferred' ? 'Preferred Vendor' : (v.org_status === 'neutral' ? 'Active' : 'Pending Verification'),
+            avatarBg: 'rgba(59,130,246,.12)',
+            avatarColor: '#60a5fa',
+            avail: (v.org_status === 'preferred' || v.org_status === 'neutral') ? '● Available Now' : '● Offline',
+            availColor: (v.org_status === 'preferred' || v.org_status === 'neutral') ? 'var(--success)' : 'var(--slate)',
+            ah: 'No',
+            emg: 'Not eligible',
+            emgColor: 'var(--slate)',
+            jobs: `${v.task_count} in progress`,
+            rel: v.rating > 0 ? (v.rating * 20).toString() : '85',
+            relColor: 'var(--success)',
+            sla: '95%',
+            resp: '30m',
+            coverage: 'All Properties',
+            phone: v.contact_phone || '—',
+            email: v.contact_email || '—',
+            region: 'Local',
+            trade: 'General',
+            team: '1 technicians',
+            since: '2023',
+            trust: v.rating > 0 ? (v.rating * 20) : 85,
+            slaReliability: 95,
+            acceptanceRate: 90,
+            reworkRate: 2,
+            avgResponseMin: 30,
+            paymentDisputes: 0,
+            lastTen: [1,1,1,1,1,1,1,1,1,1],
+          };
+        });
+        setVD(liveVD);
+      }
+      
+      if (coverageRes?.data) {
+        setAttachments(coverageRes.data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    apiFetch('/api/v1/vendors')
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.data) {
-          const liveVD = {};
-          data.data.forEach((v, i) => {
-            const vid = v.id || `live-v-${i}`;
-            liveVD[vid] = {
-              name: v.name,
-              sub: `${v.trade_count > 0 ? 'Multi-trade' : 'Specialty'} · ${v.tier}`,
-              conf: v.org_status === 'active' ? 'HIGH CONFIDENCE' : 'MODERATE',
-              confCls: v.org_status === 'active' ? 'high' : 'mod',
-              confSub: v.org_status === 'active' ? 'Preferred Vendor' : 'Pending Verification',
-              avatarBg: 'rgba(59,130,246,.12)',
-              avatarColor: '#60a5fa',
-              avail: v.org_status === 'active' ? '● Available Now' : '● Offline',
-              availColor: v.org_status === 'active' ? 'var(--success)' : 'var(--slate)',
-              ah: 'No',
-              emg: 'Not eligible',
-              emgColor: 'var(--slate)',
-              jobs: `${v.task_count} in progress`,
-              rel: v.rating > 0 ? (v.rating * 20).toString() : '85',
-              relColor: 'var(--success)',
-              sla: '95%',
-              resp: '30m',
-              coverage: 'All Properties',
-              phone: v.contact_phone || '—',
-              email: v.contact_email || '—',
-              region: 'Local',
-              trade: 'General',
-              team: '1 technicians',
-              since: '2023',
-              trust: v.rating > 0 ? (v.rating * 20) : 85,
-              slaReliability: 95,
-              acceptanceRate: 90,
-              reworkRate: 2,
-              avgResponseMin: 30,
-              paymentDisputes: 0,
-              lastTen: [1,1,1,1,1,1,1,1,1,1],
-            };
-          });
-          setVD(prev => ({ ...prev, ...liveVD }));
-        }
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    loadData();
   }, []);
 
   const showToast = (msg, type = 'info') => {
@@ -102,23 +115,31 @@ export default function VendorsView() {
 
   const closeSheet = () => { setSheet(null); setSheetData({}); };
 
-  const handleAttachConfirm = ({ vendorId, vendorName, property }) => {
-    const existing = attachments[vendorId] || [];
-    if (existing.some(r => r.property === property)) {
-      showToast(`${vendorName} is already attached to ${property}`, 'info');
-      closeSheet();
+  const handleAttachConfirm = async ({ vendorId, vendorName, property }) => {
+    // Determine property ID based on the property name from mock list
+    // In real use, the AttachSheet should return propertyId directly.
+    const propMeta = PROPERTIES.find(p => p.name === property);
+    if (!propMeta) {
+      showToast('Property not found', 'error');
       return;
     }
-    setAttachments(prev => ({
-      ...prev,
-      [vendorId]: [...(prev[vendorId] || []), {
-        property,
-        label: `Preferred #${(prev[vendorId]?.length || 0) + 1}`,
-      }],
-    }));
-    showToast(`✓ ${vendorName} attached to ${property}`, 'success');
-    closeSheet();
-    setTimeout(() => setTab('coverage'), 380);
+
+    try {
+      const res = await apiFetch(`/api/v1/vendors/${vendorId}/coverage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ propertyId: propMeta.id })
+      });
+      
+      if (!res.ok) throw new Error('Failed to attach');
+      
+      showToast(`✓ ${vendorName} attached to ${property}`, 'success');
+      closeSheet();
+      loadData(); // reload coverage
+      setTimeout(() => setTab('coverage'), 380);
+    } catch (e) {
+      showToast(e.message || 'Failed to attach', 'error');
+    }
   };
 
   const handleDispatchConfirm = (jobId) => {
@@ -126,12 +147,19 @@ export default function VendorsView() {
     setTimeout(closeSheet, 1500);
   };
 
-  const handleRemoveVendor = (vendorId, propertyName) => {
-    setAttachments(prev => ({
-      ...prev,
-      [vendorId]: (prev[vendorId] || []).filter(r => r.property !== propertyName),
-    }));
-    showToast('Vendor removed', 'info');
+  const handleRemoveVendor = async (vendorId, propertyName) => {
+    const propMeta = PROPERTIES.find(p => p.name === propertyName);
+    if (!propMeta) return;
+
+    try {
+      const res = await apiFetch(`/api/v1/vendors/${vendorId}/coverage/${propMeta.id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to remove coverage');
+      
+      showToast('Vendor removed from property', 'info');
+      loadData();
+    } catch (e) {
+      showToast('Failed to remove', 'error');
+    }
   };
 
   const handleReplaceVendor = (propertyName) => {
@@ -145,6 +173,8 @@ export default function VendorsView() {
     const v = VD[vendorId];
     switch (action) {
       case 'profile':
+      case 'compliance':
+      case 'history':
         closeSheet();
         setTimeout(() => openVendor(vendorId), 120);
         break;
@@ -156,28 +186,32 @@ export default function VendorsView() {
         showToast('Autodispatch enabled', 'success');
         closeSheet();
         break;
-      case 'compliance':
-        closeSheet();
-        setTimeout(() => openVendor(vendorId), 120);
-        break;
-      case 'history':
-        closeSheet();
-        setTimeout(() => openVendor(vendorId), 120);
-        break;
       case 'emergency':
         showToast('Emergency eligibility — coming soon', 'info');
         closeSheet();
         break;
       case 'suspend':
-        setDepWarning({ vendorId, action: 'suspend' });
-        closeSheet();
-        break;
       case 'block':
-        setDepWarning({ vendorId, action: 'block' });
+        setDepWarning({ vendorId, action });
         closeSheet();
         break;
       default:
         closeSheet();
+    }
+  };
+
+  const handleUpdateStatus = async (vendorId, status) => {
+    try {
+      const res = await apiFetch(`/api/v1/vendors/${vendorId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      if (!res.ok) throw new Error('Update failed');
+      showToast(`Vendor status updated to ${status}`, 'success');
+      loadData();
+    } catch (e) {
+      showToast('Failed to update status', 'error');
     }
   };
 
@@ -270,10 +304,8 @@ export default function VendorsView() {
           action={depWarning.action}
           onReviewFirst={() => { setDepWarning(null); setTab('coverage'); }}
           onProceed={() => {
-            showToast(
-              (depWarning.action === 'block' ? 'Vendor blocked' : 'Vendor suspended') + ' — contact admin to reverse',
-              'info'
-            );
+            const newStatus = depWarning.action === 'block' ? 'not_receiving' : 'limited';
+            handleUpdateStatus(depWarning.vendorId, newStatus);
             setDepWarning(null);
           }}
           onCancel={() => setDepWarning(null)}
