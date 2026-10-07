@@ -10,6 +10,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { DispatchModule } from './dispatch/dispatch.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { VendorsModule } from './vendors/vendors.module';
+import { ComplianceModule } from './compliance/compliance.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { VendorsModule } from './vendors/vendors.module';
     DispatchModule,
     DashboardModule,
     VendorsModule,
+    ComplianceModule,
   ],
   controllers: [AppController],
   providers: [AppService],

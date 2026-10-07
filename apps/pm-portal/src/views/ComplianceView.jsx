@@ -6,10 +6,12 @@ import ComplianceDrawer from './compliance/ComplianceDrawer';
 import TemplateModal from './compliance/modals/TemplateModal';
 import CreateTaskModal from './compliance/modals/CreateTaskModal';
 import {
-  COMPLIANCE_ITEMS, PROPS_BY_CITY, ALL_PROPS,
   isOverdue, isDueSoon, classify,
+  PROPS_BY_CITY, ALL_PROPS
 } from '../data/compliance';
 import './ComplianceView.css';
+import { apiFetch } from '../utils/api';
+import { useEffect } from 'react';
 
 const KPI_DEFS = [
   { key: 'overdue',   label: 'Overdue',        sub: 'Past due',        color: '#DC2626' },
@@ -20,7 +22,8 @@ const KPI_DEFS = [
 ];
 
 export default function ComplianceView() {
-  const [items, setItems]                 = useState(COMPLIANCE_ITEMS);
+  const [items, setItems]                 = useState([]);
+  const [loading, setLoading]             = useState(true);
   const [search, setSearch]               = useState('');
   const [city, setCity]                   = useState('');
   const [prop, setProp]                   = useState('');
@@ -30,6 +33,25 @@ export default function ComplianceView() {
   const [templateModal, setTemplateModal] = useState(false);
   const [createTaskItem, setCreateTaskItem] = useState(null);
   const [toast, setToast]                 = useState(null);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch('/api/v1/compliance');
+      if (res.ok) {
+        const data = await res.json();
+        setItems(data.data || []);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const openItem = useMemo(
     () => items.find(i => i.id === openItemId) || null,
@@ -94,14 +116,25 @@ export default function ComplianceView() {
   };
 
   /* ─── Confirm Create Task ─── */
-  const handleCreateTaskConfirm = (id) => {
-    updateItem(id, {
-      status: 'scheduled',
-      inspStatus: 'Scheduled — pending vendor confirmation',
-    });
-    setCreateTaskItem(null);
-    setOpenItemId(null);
-    showToast('Task created · Calendar event generated · Compliance updated', 'success');
+  const handleCreateTaskConfirm = async (id) => {
+    try {
+      const res = await apiFetch(`/api/v1/compliance/${id}/schedule`, { method: 'POST' });
+      if (res.ok) {
+        updateItem(id, {
+          status: 'scheduled',
+          inspStatus: 'Scheduled — pending vendor confirmation',
+        });
+        showToast('Task created · Calendar event generated · Compliance updated', 'success');
+        loadData();
+      } else {
+        showToast('Failed to schedule task', 'error');
+      }
+    } catch (e) {
+      showToast('Error scheduling task', 'error');
+    } finally {
+      setCreateTaskItem(null);
+      setOpenItemId(null);
+    }
   };
 
   /* ─── Template apply ─── */

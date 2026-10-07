@@ -454,3 +454,31 @@ CREATE TABLE IF NOT EXISTS job_sla_snapshots (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(job_id)
 );
+
+-- Property Compliance Engine
+CREATE TABLE IF NOT EXISTS property_compliance_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  property_id UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  compliance_type TEXT NOT NULL CHECK (compliance_type IN ('Inspection', 'License', 'Insurance', 'Certificate', 'HOA')),
+  status TEXT NOT NULL CHECK (status IN ('missing', 'action', 'scheduled', 'review', 'compliant')),
+  risk_level TEXT NOT NULL CHECK (risk_level IN ('LOW', 'MEDIUM', 'HIGH')),
+  due_date DATE,
+  renewal_cycle TEXT NOT NULL CHECK (renewal_cycle IN ('Annual', 'Semi-annual', 'Quarterly', 'Monthly', 'None')),
+  jurisdiction TEXT,
+  blocks_rentals BOOLEAN NOT NULL DEFAULT false,
+  requires_inspection BOOLEAN NOT NULL DEFAULT false,
+  assigned_vendor_id UUID REFERENCES vendors(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS property_compliance_documents (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  compliance_item_id UUID NOT NULL REFERENCES property_compliance_items(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  file_url TEXT,
+  is_verified BOOLEAN NOT NULL DEFAULT false,
+  uploaded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
