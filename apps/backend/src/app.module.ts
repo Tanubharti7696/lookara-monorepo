@@ -10,8 +10,8 @@ import { TasksModule } from './tasks/tasks.module';
 import { DispatchModule } from './dispatch/dispatch.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { VendorsModule } from './vendors/vendors.module';
-import { ComplianceModule } from './compliance/compliance.module';
 import { IncidentsModule } from './incidents/incidents.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -25,6 +25,7 @@ import { IncidentsModule } from './incidents/incidents.module';
     VendorsModule,
     ComplianceModule,
     IncidentsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -5,11 +5,12 @@ import SignalSections from './alerts/SignalSections';
 import WhyPanel from './alerts/WhyPanel';
 import OwnerStayDrawer from './alerts/OwnerStayDrawer';
 import ApprovalInquiryDrawer from './alerts/ApprovalInquiryDrawer';
-import { SIGNAL_CARDS } from '../data/signals';
+import { apiFetch } from '../utils/api';
 import './AlertsView.css';
 
 export default function AlertsView() {
-  const [cards, setCards]           = useState(SIGNAL_CARDS);
+  const [cards, setCards]           = useState([]);
+  const [loading, setLoading]       = useState(true);
   const [filter, setFilter]         = useState('all');
   const [search, setSearch]         = useState('');
   const [whyKey, setWhyKey]         = useState(null);
@@ -19,13 +20,38 @@ export default function AlertsView() {
   const [toast, setToast]           = useState(null);
   const pauseTimerRef               = useRef(null);
 
+  const loadNotifications = async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch('/api/v1/notifications');
+      if (res.ok) {
+        const data = await res.json();
+        setCards(data.data || []);
+      }
+    } catch (e) {
+      console.error(e);
+      setToast({ msg: 'Failed to load notifications', type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadNotifications();
+  }, []);
+
   const showToast = (msg, type = 'info') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 2800);
   };
 
-  const toggleUnread = (id) => {
-    setCards(list => list.map(c => (c.id === id ? { ...c, unread: false } : c)));
+  const toggleUnread = async (id) => {
+    try {
+      await apiFetch(`/api/v1/notifications/${id}/read`, { method: 'PATCH' });
+      setCards(list => list.map(c => (c.id === id ? { ...c, unread: false } : c)));
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const markLowRead = () => {
