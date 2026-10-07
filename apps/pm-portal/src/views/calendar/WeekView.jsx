@@ -14,7 +14,8 @@ export default function WeekView({ lanes = [], search, onOpenDay, onOpenTurnover
   });
 
   // Filter lanes by search
-  const visibleLanes = lanes.filter(lane => {
+  const safeLanes = Array.isArray(lanes) ? lanes : [];
+  const visibleLanes = safeLanes.filter(lane => {
     if (!term) return true;
     const text = lane.name.toLowerCase();
     if (term === 'offline') return lane.offline === true;

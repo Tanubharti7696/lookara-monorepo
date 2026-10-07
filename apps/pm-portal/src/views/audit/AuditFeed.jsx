@@ -1,8 +1,9 @@
 // src/views/audit/AuditFeed.jsx
 import { groupByDate } from '../../data/audit';
 
-export default function AuditFeed({ events, onOpenDrawer }) {
-  if (!events.length) {
+export default function AuditFeed({ events = [], onOpenDrawer }) {
+  const safeEvents = Array.isArray(events) ? events : [];
+  if (!safeEvents.length) {
     return (
       <div className="audit-empty">
         <div className="audit-empty__icon">🔍</div>
@@ -14,7 +15,7 @@ export default function AuditFeed({ events, onOpenDrawer }) {
     );
   }
 
-  const grouped = groupByDate(events);
+  const grouped = groupByDate(safeEvents);
 
   return (
     <div className="audit-feed">
