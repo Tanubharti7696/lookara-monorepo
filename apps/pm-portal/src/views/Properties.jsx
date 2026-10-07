@@ -2,7 +2,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { apiFetch } from '../utils/api';
 import { useNavigate } from 'react-router-dom';
-import { PROPERTIES as INITIAL_PROPERTIES } from '../data/properties';
 import PropertyCard      from './properties/PropertyCard';
 import PropertyRow       from './properties/PropertyRow';
 import PropertyMap       from './properties/PropertyMap';

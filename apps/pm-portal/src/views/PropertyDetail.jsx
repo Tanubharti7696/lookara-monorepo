@@ -230,14 +230,16 @@ function OverviewTab({ property: p }) {
 
 /* ─────────── Compliance ─────────── */
 function ComplianceTab({ property: p, onToast }) {
-  const items = [
-    { name: 'STR License',        type: 'License',     due: 'Apr 15, 2026', status: 'scheduled' },
-    { name: 'Fire Safety Inspection', type: 'Inspection', due: 'Mar 20, 2026', status: 'action' },
-    { name: 'Building Insurance COI', type: 'Insurance',  due: 'Mar 15, 2026', status: 'compliant' },
-    { name: 'Smoke Detector Test', type: 'Inspection',  due: 'Mar 20, 2026', status: p.complianceStatus === 'overdue' ? 'missing' : 'scheduled' },
-    { name: 'Gas Line Inspection', type: 'Inspection',  due: 'Apr 2, 2026',  status: 'scheduled' },
-    { name: 'Pest Control Log',    type: 'Certificate', due: 'Mar 30, 2026', status: 'compliant' },
-  ];
+  const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    apiFetch(`/api/v1/compliance?propertyId=${p.id}`)
+      .then(r => r.json())
+      .then(res => {
+        if (res.data) setItems(res.data);
+      })
+      .catch(console.error);
+  }, [p.id]);
 
   return (
     <div className="pd-card pd-card--wide">
@@ -262,12 +264,16 @@ function ComplianceTab({ property: p, onToast }) {
 
 /* ─────────── Work Orders ─────────── */
 function WorkOrdersTab({ property: p, onToast }) {
-  const wos = [
-    { id: 'WO-2041', title: 'Replace HVAC filter',    priority: 'medium',   status: 'open',      due: 'Mar 8, 2026' },
-    { id: 'WO-2039', title: 'Leaky kitchen faucet',   priority: 'low',      status: 'in_progress', due: 'Mar 6, 2026' },
-    { id: 'WO-2022', title: 'Deep clean before guest',priority: 'medium',   status: 'completed', due: 'Feb 28, 2026' },
-    { id: 'WO-1998', title: 'Fire alarm inspection',  priority: 'critical', status: 'completed', due: 'Feb 12, 2026' },
-  ];
+  const [wos, setWos] = useState([]);
+
+  useEffect(() => {
+    apiFetch(`/api/v1/tasks?propertyId=${p.id}`)
+      .then(r => r.json())
+      .then(res => {
+        if (res.data) setWos(res.data);
+      })
+      .catch(console.error);
+  }, [p.id]);
   return (
     <div className="pd-card pd-card--wide">
       <div className="pd-card__title-row">

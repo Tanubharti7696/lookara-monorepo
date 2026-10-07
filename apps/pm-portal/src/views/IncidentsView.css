@@ -1,0 +1,10 @@
+/* IncidentsView.css */
+.incidents-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.incidents-list {
+  overflow-y: auto;
+}

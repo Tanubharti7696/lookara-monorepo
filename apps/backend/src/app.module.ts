@@ -11,6 +11,7 @@ import { DispatchModule } from './dispatch/dispatch.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { VendorsModule } from './vendors/vendors.module';
 import { ComplianceModule } from './compliance/compliance.module';
+import { IncidentsModule } from './incidents/incidents.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { ComplianceModule } from './compliance/compliance.module';
     DashboardModule,
     VendorsModule,
     ComplianceModule,
+    IncidentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

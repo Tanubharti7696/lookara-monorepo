@@ -12,6 +12,7 @@ import ComplianceView from './views/ComplianceView';
 import AlertsView from './views/AlertsView';
 import CalendarView from './views/CalendarView';
 import VendorsView from './views/VendorsView';
+import IncidentsView from './views/IncidentsView';
 import BillingView from './views/BillingView';
 import Settings from './views/SettingsView';
 import Toast from './components/Toast';
@@ -114,6 +115,7 @@ function Shell() {
             <Route path="/alerts" element={<AlertsView />} />
             <Route path="/calendar" element={<CalendarView />} />
             <Route path="/vendors" element={<VendorsView />} />
+            <Route path="/incidents" element={<IncidentsView onToast={showToast} />} />
             <Route path="/billing"  element={<RoleGuard minRole="admin"><BillingView onToast={showToast} /></RoleGuard>} />
             <Route path="/settings" element={<RoleGuard minRole="admin"><Settings onToast={showToast} /></RoleGuard>} />
             <Route path="/settings/:section" element={<RoleGuard minRole="admin"><Settings onToast={showToast} /></RoleGuard>} />

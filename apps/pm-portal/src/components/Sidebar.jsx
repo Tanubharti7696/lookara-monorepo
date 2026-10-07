@@ -98,6 +98,7 @@ const NAV = [
     items: [
       { to: '/dashboard',   icon: <IconDashboard />, label: 'Dashboard' },
       { to: '/tasks',       icon: <IconTasks />,     label: 'Tasks' },
+      { to: '/incidents',   icon: <IconAlerts />,    label: 'Incidents' },
       { to: '/emergency',   icon: <IconEmergency />, label: 'Emergency',  badge: 1,  badgeTone: 'crimson' },
       { to: '/calendar',    icon: <IconCalendar />,  label: 'Calendar' },
       { to: '/alerts',      icon: <IconAlerts />,    label: 'Alerts',     badge: 12, badgeTone: 'amber' },
