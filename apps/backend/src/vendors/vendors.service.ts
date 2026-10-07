@@ -66,16 +66,16 @@ export class VendorsService {
     const orgId = user.activeOrganizationId;
     
     // Verify property belongs to org
-    const propRes = await query(\`SELECT id, name FROM properties WHERE id = $1 AND organization_id = $2\`, [propertyId, orgId]);
+    const propRes = await query(`SELECT id, name FROM properties WHERE id = $1 AND organization_id = $2`, [propertyId, orgId]);
     if (propRes.rows.length === 0) throw new ForbiddenException('Property not found in your organization');
 
     // Add coverage
-    await query(\`
+    await query(`
       INSERT INTO vendor_property_coverage (vendor_id, property_id, status)
       VALUES ($1, $2, 'active')
       ON CONFLICT (vendor_id, property_id) 
       DO UPDATE SET status = 'active', updated_at = now()
-    \`, [vendorId, propertyId]);
+    `, [vendorId, propertyId]);
 
     await this.auditService.recordEvent({
       actorType: 'pm',
@@ -84,7 +84,7 @@ export class VendorsService {
       targetId: vendorId,
       category: 'vendor',
       eventType: 'vendor.coverage_added',
-      summary: \`Vendor granted coverage for property \${propRes.rows[0].name}\`,
+      summary: `Vendor granted coverage for property ${propRes.rows[0].name}`,
     });
 
     return { success: true };
@@ -94,13 +94,13 @@ export class VendorsService {
     const orgId = user.activeOrganizationId;
     
     // Verify property belongs to org
-    const propRes = await query(\`SELECT id, name FROM properties WHERE id = $1 AND organization_id = $2\`, [propertyId, orgId]);
+    const propRes = await query(`SELECT id, name FROM properties WHERE id = $1 AND organization_id = $2`, [propertyId, orgId]);
     if (propRes.rows.length === 0) throw new ForbiddenException('Property not found in your organization');
 
-    await query(\`
+    await query(`
       UPDATE vendor_property_coverage SET status = 'inactive', updated_at = now()
       WHERE vendor_id = $1 AND property_id = $2
-    \`, [vendorId, propertyId]);
+    `, [vendorId, propertyId]);
 
     await this.auditService.recordEvent({
       actorType: 'pm',
@@ -109,7 +109,7 @@ export class VendorsService {
       targetId: vendorId,
       category: 'vendor',
       eventType: 'vendor.coverage_removed',
-      summary: \`Vendor coverage removed for property \${propRes.rows[0].name}\`,
+      summary: `Vendor coverage removed for property ${propRes.rows[0].name}`,
     });
 
     return { success: true };
@@ -120,15 +120,15 @@ export class VendorsService {
     
     const allowedStatuses = ['preferred', 'neutral', 'limited', 'not_receiving'];
     if (!allowedStatuses.includes(status)) {
-      throw new BadRequestException(\`Status must be one of: \${allowedStatuses.join(', ')}\`);
+      throw new BadRequestException(`Status must be one of: ${allowedStatuses.join(', ')}`);
     }
 
-    const res = await query(\`
+    const res = await query(`
       UPDATE organization_vendors 
       SET relationship_status = $1, updated_at = now()
       WHERE vendor_id = $2 AND organization_id = $3
       RETURNING *
-    \`, [status, vendorId, orgId]);
+    `, [status, vendorId, orgId]);
 
     if (res.rows.length === 0) throw new NotFoundException('Vendor not found in your organization');
 
@@ -138,8 +138,8 @@ export class VendorsService {
       targetType: 'vendor',
       targetId: vendorId,
       category: 'vendor',
-      eventType: \`vendor.status_changed\`,
-      summary: \`Vendor relationship status changed to \${status}\`,
+      eventType: `vendor.status_changed`,
+      summary: `Vendor relationship status changed to ${status}`,
     });
 
     return res.rows[0];
