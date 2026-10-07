@@ -1,15 +1,28 @@
 // src/views/compliance/modals/TemplateModal.jsx
-import { useState } from 'react';
-import { TEMPLATE_PACKS } from '../../../data/compliance';
+import { useState, useEffect } from 'react';
+import { apiFetch } from '../../../../utils/api';
 
 export default function TemplateModal({ open, onClose, onApply }) {
   const [selected, setSelected] = useState(null);
+  const [templates, setTemplates] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setLoading(true);
+      apiFetch('/api/v1/compliance/templates')
+        .then(res => res.json())
+        .then(data => setTemplates(data))
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    }
+  }, [open]);
 
   if (!open) return null;
 
   const handleApply = () => {
     if (!selected) return;
-    const pack = TEMPLATE_PACKS.find(t => t.id === selected);
+    const pack = templates.find(t => t.id === selected);
     onApply?.(pack);
     setSelected(null);
   };
@@ -25,18 +38,20 @@ export default function TemplateModal({ open, onClose, onApply }) {
         </div>
         <div className="modal-sub">Requirement packs loaded automatically for your properties</div>
 
-        <div>
-          {TEMPLATE_PACKS.map(t => (
+        <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+          {loading && <div style={{ padding: '20px', textAlign: 'center' }}>Loading...</div>}
+          {!loading && templates.length === 0 && <div style={{ padding: '20px', textAlign: 'center' }}>No templates found</div>}
+          {!loading && templates.map(t => (
             <div
               key={t.id}
               className={`tmpl-card ${selected === t.id ? 'active' : ''}`}
               onClick={() => setSelected(t.id)}
             >
-              <div className="tmpl-icon">{t.icon}</div>
+              <div className="tmpl-icon">📋</div>
               <div>
                 <div className="tmpl-name">{t.name}</div>
-                <div className="tmpl-desc">{t.desc}</div>
-                <div className="tmpl-count">{t.count}</div>
+                <div className="tmpl-desc">Status: {t.status}</div>
+                <div className="tmpl-count">{t.requirements?.length || 0} items</div>
               </div>
             </div>
           ))}

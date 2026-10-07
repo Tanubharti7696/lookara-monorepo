@@ -1,5 +1,6 @@
 // src/views/ComplianceTemplateBuilder.jsx
 import { useState, useMemo, useCallback } from 'react';
+import { apiFetch } from '../utils/api';
 import LeftPanel from './compliance-builder/LeftPanel';
 import Topbar from './compliance-builder/Topbar';
 import TabsBar from './compliance-builder/TabsBar';
@@ -121,25 +122,39 @@ export default function ComplianceTemplateBuilder({ onNavigateBack, onToast }) {
 
   /* ────────── Actions ────────── */
   const publish = () => {
-    setTemplate(t => ({
-      ...t,
-      status: 'active',
-      changeLog: [
-        {
-          icon: '📋',
-          title: 'Template published',
-          user: 'You',
-          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          detail: `Status changed: ${t.status} → active`,
-        },
-        ...t.changeLog,
-      ],
-    }));
-    onToast?.('Template published — now available to apply to properties', 'success');
+    const patch = { status: 'active' };
+    saveToApi({ ...template, ...patch }).then((saved) => {
+      setTemplate(t => ({
+        ...t,
+        ...saved,
+        changeLog: [
+          {
+            icon: '📋',
+            title: 'Template published',
+            user: 'You',
+            date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+            detail: `Status changed: ${t.status} → active`,
+          },
+          ...t.changeLog,
+        ],
+      }));
+      onToast?.('Template published — now available to apply to properties', 'success');
+    });
   };
 
   const saveDraft = () => {
-    onToast?.('Draft saved', 'info');
+    saveToApi(template).then((saved) => {
+      setTemplate(t => ({ ...t, ...saved }));
+      onToast?.('Draft saved', 'info');
+    });
+  };
+
+  const saveToApi = (data) => {
+    return apiFetch('/api/v1/compliance/templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(res => res.json());
   };
 
   const duplicate = () => {

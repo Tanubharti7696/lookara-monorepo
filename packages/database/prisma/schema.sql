@@ -499,3 +499,31 @@ CREATE TABLE IF NOT EXISTS bookings (
 );
 CREATE INDEX IF NOT EXISTS idx_bookings_org ON bookings(organization_id);
 CREATE INDEX IF NOT EXISTS idx_bookings_property ON bookings(property_id);
+
+-- Compliance Templates (Phase 6)
+CREATE TABLE IF NOT EXISTS compliance_templates (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_compliance_templates_org ON compliance_templates(organization_id);
+
+CREATE TABLE IF NOT EXISTS template_requirements (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    template_id UUID NOT NULL REFERENCES compliance_templates(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    cycle VARCHAR(50) NOT NULL,
+    due_month INT,
+    due_day INT,
+    is_inspection BOOLEAN DEFAULT false,
+    ops_blocker BOOLEAN DEFAULT false,
+    priority VARCHAR(50) DEFAULT 'medium',
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_template_requirements_tmpl ON template_requirements(template_id);
+

@@ -74,4 +74,65 @@ export class ComplianceService {
 
     return updated.rows[0];
   }
+
+  async getTemplates(user: JwtPayload) {
+    const orgId = user.activeOrganizationId;
+    if (!orgId) return [];
+
+    const res = await query(
+      `SELECT * FROM compliance_templates WHERE organization_id = $1 ORDER BY created_at DESC`,
+      [orgId]
+    );
+    return res.rows;
+  }
+
+  async getTemplate(user: JwtPayload, templateId: string) {
+    const orgId = user.activeOrganizationId;
+    const tRes = await query(
+      `SELECT * FROM compliance_templates WHERE id = $1 AND organization_id = $2`,
+      [templateId, orgId]
+    );
+    if (tRes.rows.length === 0) throw new NotFoundException('Template not found');
+    
+    const rRes = await query(
+      `SELECT * FROM template_requirements WHERE template_id = $1 ORDER BY created_at ASC`,
+      [templateId]
+    );
+
+    return {
+      ...tRes.rows[0],
+      requirements: rRes.rows
+    };
+  }
+
+  async saveTemplate(user: JwtPayload, templateData: any) {
+    const orgId = user.activeOrganizationId;
+    
+    // Simplistic UPSERT
+    let templateId = templateData.id;
+    if (!templateId || String(templateId).includes('copy') || templateId === 'temp') {
+      const res = await query(
+        `INSERT INTO compliance_templates (organization_id, name, status) VALUES ($1, $2, $3) RETURNING id`,
+        [orgId, templateData.name, templateData.status || 'draft']
+      );
+      templateId = res.rows[0].id;
+    } else {
+      await query(
+        `UPDATE compliance_templates SET name = $1, status = $2, updated_at = now() WHERE id = $3 AND organization_id = $4`,
+        [templateData.name, templateData.status, templateId, orgId]
+      );
+      await query(`DELETE FROM template_requirements WHERE template_id = $1`, [templateId]);
+    }
+
+    const reqs = templateData.requirements || [];
+    for (const r of reqs) {
+      await query(
+        `INSERT INTO template_requirements (template_id, name, type, cycle, due_month, due_day, is_inspection, ops_blocker, priority, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [templateId, r.name, r.type, r.cycle, r.dueMonth, r.dueDay, r.inspection, r.opsBlocker, r.priority, r.notes]
+      );
+    }
+
+    return this.getTemplate(user, templateId);
+  }
 }
