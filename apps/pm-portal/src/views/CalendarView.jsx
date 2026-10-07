@@ -29,7 +29,7 @@ export default function CalendarView() {
     apiFetch(`/api/v1/calendar/lanes?start=${startStr}&end=${endStr}`)
       .then(res => res.json())
       .then(data => {
-        setLanes(data);
+        setLanes(data.data || []);
       })
       .catch(console.error)
       .finally(() => setLoading(false));

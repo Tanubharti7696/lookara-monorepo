@@ -23,7 +23,7 @@ export default function AuditView() {
       .then(res => res.json())
       .then(data => {
         if (data && data.data) {
-          const mapped = data.data.data.map(evt => ({
+          const mapped = data.data.map(evt => ({
             id: evt.id,
             code: evt.event_code,
             time: evt.created_at,

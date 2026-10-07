@@ -12,10 +12,9 @@ export class IncidentsService {
     if (!orgId) throw new ForbiddenException('Must be in an organization context');
 
     let sql = `
-      SELECT i.*, p.name as property_name, u.full_name as reported_by
+      SELECT i.*, p.name as property_name, 'System' as reported_by
       FROM incidents i
       JOIN properties p ON i.property_id = p.id
-      LEFT JOIN users u ON i.source_user_id = u.id
       WHERE i.organization_id = $1
     `;
     const params: any[] = [orgId];
@@ -31,13 +30,13 @@ export class IncidentsService {
     
     return res.rows.map(row => ({
       id: row.id,
-      title: row.flag_type.replace('_', ' '),
-      description: row.description,
+      title: row.title,
+      description: row.summary,
       propertyId: row.property_id,
       propertyName: row.property_name,
       severity: row.severity,
       status: row.status,
-      sourceType: row.source_type,
+      sourceType: 'pm',
       reportedBy: row.reported_by || 'System',
       createdAt: row.created_at,
     }));
@@ -75,12 +74,13 @@ export class IncidentsService {
     const orgId = user.activeOrganizationId;
     if (!orgId) throw new ForbiddenException('Must be in an organization context');
 
+    const incidentCode = 'INC-' + Math.floor(Math.random() * 100000);
     const res = await query(`
       INSERT INTO incidents (
-        organization_id, property_id, flag_type, severity, source_type, source_user_id, status, description
-      ) VALUES ($1, $2, $3, $4, 'pm', $5, 'open', $6)
+        organization_id, property_id, title, incident_type, severity, status, summary, incident_code
+      ) VALUES ($1, $2, $3, 'maintenance_issue', $4, 'open', $5, $6)
       RETURNING *
-    `, [orgId, data.propertyId, data.flagType, data.severity, user.sub, data.description]);
+    `, [orgId, data.propertyId, data.flagType, data.severity, data.description, incidentCode]);
 
     await this.auditService.recordEvent({
       actorType: 'pm',
