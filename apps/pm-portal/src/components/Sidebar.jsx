@@ -144,9 +144,16 @@ export default function Sidebar() {
     window.location.href = target;
   };
 
-  const name = user?.name || 'Loading...';
-  const orgName = user?.organizations?.[0]?.organization?.name || 'PM Portfolio';
-  const initials = isLoadingUser ? '...' : (name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'PM');
+  // Read cached user from localStorage if available immediately
+  let cachedUser = null;
+  try {
+    cachedUser = JSON.parse(localStorage.getItem('lookara_user') || 'null');
+  } catch (e) {}
+
+  const activeUser = user || cachedUser;
+  const name = activeUser?.fullName || activeUser?.name || 'Property Manager';
+  const orgName = activeUser?.memberships?.[0]?.organizationName || activeUser?.organizations?.[0]?.organization?.name || 'Coastal PM Portfolio';
+  const initials = name.split(' ').map(n => n[0]).filter(Boolean).join('').substring(0, 2).toUpperCase() || 'PM';
 
   return (
     <>

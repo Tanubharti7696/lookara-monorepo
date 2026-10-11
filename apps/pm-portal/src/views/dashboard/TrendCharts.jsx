@@ -1,5 +1,6 @@
 // src/views/dashboard/TrendCharts.jsx
 import { useChart } from '../../hooks/useChart';
+import { dashboardData } from '../../data/dashboardData';
 import {
   setupCanvas, clearCanvas, makeLinearScale, drawChartFrame,
   drawLine, drawArea, drawBand, drawForecast, drawMultiLine,
@@ -142,9 +143,7 @@ function VendorChart({ data }) {
 
 /* ── Section ── */
 export default function TrendCharts({ trends }) {
-  if (!trends) return <section className="dashboard-section"><div style={{padding: '2rem'}}>Loading trends...</div></section>;
-
-  const T = trends;
+  const T = (trends && trends.occupancy) ? trends : dashboardData.trends;
   return (
     <section className="dashboard-section">
       <div className="dashboard-section__label">Operational Trends · 30-Day</div>
