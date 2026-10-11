@@ -45,4 +45,30 @@ export class VendorsController {
   ) {
     return this.vendorsService.updateStatus(vendorId, status, user);
   }
+
+  @Get('portal/jobs')
+  async getVendorJobs(
+    @CurrentUser() user: JwtPayload,
+    @Query('status') status?: string,
+  ) {
+    return this.vendorsService.getVendorJobs(user, status);
+  }
+
+  @Post('portal/jobs/:id/respond')
+  async respondToJob(
+    @Param('id') jobId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { action: 'accept' | 'decline'; declineReason?: string },
+  ) {
+    return this.vendorsService.respondToJob(jobId, user, body);
+  }
+
+  @Patch('portal/jobs/:id/execution')
+  async updateJobExecution(
+    @Param('id') jobId: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { status: 'in_progress' | 'verification_pending' | 'completed'; notes?: string },
+  ) {
+    return this.vendorsService.updateJobExecution(jobId, user, body);
+  }
 }

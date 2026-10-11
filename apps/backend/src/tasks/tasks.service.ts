@@ -265,4 +265,160 @@ export class TasksService {
 
     return { success: true };
   }
+
+  async getEvidence(jobId: string, user: JwtPayload) {
+    await this.findOne(jobId, user);
+    const res = await query(
+      `SELECT je.*, u.full_name AS uploaded_by_name, v.display_name AS vendor_name
+       FROM job_evidence je
+       LEFT JOIN users u ON je.uploaded_by_user_id = u.id
+       LEFT JOIN vendors v ON je.vendor_id = v.id
+       WHERE je.job_id = $1
+       ORDER BY je.created_at DESC`,
+      [jobId]
+    );
+    return res.rows;
+  }
+
+  async addEvidence(jobId: string, user: JwtPayload, data: {
+    evidenceType: 'before_photo' | 'after_photo' | 'receipt' | 'notes' | 'signature';
+    fileUrl: string;
+    notes?: string;
+    gpsLatitude?: number;
+    gpsLongitude?: number;
+    vendorId?: string;
+  }) {
+    const task = await this.findOne(jobId, user);
+    
+    // Resolve vendor if actor is vendor
+    let vendorId = data.vendorId || null;
+    if (!vendorId && user.isVendor) {
+      const vRes = await query(`SELECT id FROM vendors WHERE user_id = $1 LIMIT 1`, [user.sub]);
+      if (vRes.rows.length > 0) vendorId = vRes.rows[0].id;
+    }
+
+    const res = await query(
+      `INSERT INTO job_evidence (
+        job_id, vendor_id, uploaded_by_user_id, evidence_type, file_url, notes, gps_latitude, gps_longitude
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [
+        jobId,
+        vendorId,
+        user.sub,
+        data.evidenceType,
+        data.fileUrl,
+        data.notes || null,
+        data.gpsLatitude || null,
+        data.gpsLongitude || null,
+      ]
+    );
+
+    const evidence = res.rows[0];
+
+    await this.auditService.recordEvent({
+      actorType: user.isAdmin ? 'admin' : user.isVendor ? 'vendor' : 'pm',
+      actorUserId: user.sub,
+      targetType: 'job',
+      targetId: jobId,
+      category: 'task',
+      eventType: 'task.evidence_uploaded',
+      summary: `Evidence (${data.evidenceType}) uploaded for Task ${task.job_code}`,
+      metadata: { evidenceId: evidence.id, type: data.evidenceType },
+    });
+
+    return evidence;
+  }
+
+  async verify(jobId: string, user: JwtPayload, data: { decision: 'approve' | 'rework'; reworkReason?: string }) {
+    const task = await this.findOne(jobId, user);
+
+    if (data.decision === 'approve') {
+      const res = await query(
+        `UPDATE jobs 
+         SET status = 'closed', verified_at = now(), verified_by_user_id = $1, updated_at = now()
+         WHERE id = $2 RETURNING *`,
+        [user.sub, jobId]
+      );
+
+      await this.auditService.recordEvent({
+        actorType: 'pm',
+        actorUserId: user.sub,
+        targetType: 'job',
+        targetId: jobId,
+        category: 'task',
+        eventType: 'task.verified_and_closed',
+        summary: `Task ${task.job_code} verified and closed by PM`,
+        metadata: { verifiedBy: user.sub },
+      });
+
+      return { status: 'closed', task: res.rows[0] };
+    } else {
+      if (!data.reworkReason) {
+        throw new BadRequestException('A reason is required when rejecting work for rework');
+      }
+
+      // Mark original task status back to in_progress or escalated
+      await query(
+        `UPDATE jobs SET status = 'escalated', rework_reason = $1, updated_at = now() WHERE id = $2`,
+        [data.reworkReason, jobId]
+      );
+
+      // Create linked Rework Task
+      const reworkJobCode = `${task.job_code}-RW`;
+      const createReworkSql = `
+        INSERT INTO jobs (
+          job_code, organization_id, property_id, created_by_user_id,
+          trade_code, workflow_class, subtype, severity, source,
+          title, description, service_type, payout_amount, status,
+          rework_parent_job_id, rework_reason
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, 'high', 'rework',
+          $8, $9, $10, 0, 'assigned', $11, $12
+        ) RETURNING *
+      `;
+      const reworkRes = await query(createReworkSql, [
+        reworkJobCode,
+        task.organization_id,
+        task.property_id,
+        user.sub,
+        task.trade_code,
+        task.workflow_class,
+        'rework',
+        `[REWORK] ${task.title}`,
+        `REWORK REQUIRED: ${data.reworkReason}\n\nOriginal Scope:\n${task.description || ''}`,
+        task.service_type,
+        task.id,
+        data.reworkReason,
+      ]);
+
+      const reworkTask = reworkRes.rows[0];
+
+      // Automatically assign to the same vendor if original assignment exists
+      const assignRes = await query(`SELECT vendor_id FROM job_assignments WHERE job_id = $1 ORDER BY assigned_at DESC LIMIT 1`, [jobId]);
+      if (assignRes.rows.length > 0) {
+        await query(
+          `INSERT INTO job_assignments (job_id, vendor_id, assignment_type) VALUES ($1, $2, 'manual')`,
+          [reworkTask.id, assignRes.rows[0].vendor_id]
+        );
+      }
+
+      await this.auditService.recordEvent({
+        actorType: 'pm',
+        actorUserId: user.sub,
+        targetType: 'job',
+        targetId: jobId,
+        category: 'task',
+        eventType: 'task.rework_triggered',
+        summary: `Task ${task.job_code} rejected by PM — spawned Rework Task ${reworkTask.job_code}`,
+        metadata: { reworkTaskId: reworkTask.id, reason: data.reworkReason },
+      });
+
+      return {
+        status: 'rework_created',
+        originalTaskId: jobId,
+        reworkTask,
+      };
+    }
+  }
 }

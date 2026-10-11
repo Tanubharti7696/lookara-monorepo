@@ -64,4 +64,37 @@ export class TasksController {
   async remove(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.tasksService.remove(id, user);
   }
+
+  @Get(':id/evidence')
+  @ApiOperation({ summary: 'List evidence for a task' })
+  async getEvidence(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.tasksService.getEvidence(id, user);
+  }
+
+  @Post(':id/evidence')
+  @ApiOperation({ summary: 'Upload or record evidence for a task' })
+  async addEvidence(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: {
+      evidenceType: 'before_photo' | 'after_photo' | 'receipt' | 'notes' | 'signature';
+      fileUrl: string;
+      notes?: string;
+      gpsLatitude?: number;
+      gpsLongitude?: number;
+      vendorId?: string;
+    },
+  ) {
+    return this.tasksService.addEvidence(id, user, body);
+  }
+
+  @Post(':id/verify')
+  @ApiOperation({ summary: 'PM verification of completed work (Approve or Trigger Rework)' })
+  async verify(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { decision: 'approve' | 'rework'; reworkReason?: string },
+  ) {
+    return this.tasksService.verify(id, user, body);
+  }
 }

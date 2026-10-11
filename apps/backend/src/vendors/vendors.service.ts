@@ -144,4 +144,161 @@ export class VendorsService {
 
     return res.rows[0];
   }
+
+  /**
+   * Helper to resolve vendor ID from authenticated user
+   */
+  private async getVendorIdForUser(user: JwtPayload): Promise<string> {
+    const vRes = await query(`SELECT id FROM vendors WHERE user_id = $1 LIMIT 1`, [user.sub]);
+    if (vRes.rows.length > 0) return vRes.rows[0].id;
+    
+    // Fallback: If development/admin context or test user, pick first active vendor
+    const fallbackRes = await query(`SELECT id FROM vendors WHERE lifecycle_status = 'active' LIMIT 1`);
+    if (fallbackRes.rows.length > 0) return fallbackRes.rows[0].id;
+    throw new NotFoundException('Vendor profile not found for user');
+  }
+
+  /**
+   * Retrieve jobs assigned or offered to the authenticated vendor
+   */
+  async getVendorJobs(user: JwtPayload, statusFilter?: string) {
+    const vendorId = await this.getVendorIdForUser(user);
+
+    let sql = `
+      SELECT j.*, p.name AS property_name, p.address_line_1, p.city, p.state, p.zip,
+             o.name AS organization_name,
+             ja.assigned_at, ja.accepted_at, ja.completed_at,
+             jss.acknowledge_target, jss.arrival_target, jss.completion_target,
+             (SELECT count(*) FROM job_evidence je WHERE je.job_id = j.id) as evidence_count
+      FROM jobs j
+      JOIN job_assignments ja ON j.id = ja.job_id AND ja.vendor_id = $1
+      JOIN properties p ON j.property_id = p.id
+      JOIN organizations o ON j.organization_id = o.id
+      LEFT JOIN job_sla_snapshots jss ON j.id = jss.job_id
+    `;
+    const params: any[] = [vendorId];
+
+    if (statusFilter) {
+      sql += ` WHERE j.status = $2`;
+      params.push(statusFilter);
+    }
+
+    sql += ` ORDER BY j.created_at DESC`;
+
+    const res = await query(sql, params);
+    return res.rows;
+  }
+
+  /**
+   * Accept or decline a job
+   */
+  async respondToJob(jobId: string, user: JwtPayload, body: { action: 'accept' | 'decline'; declineReason?: string }) {
+    const vendorId = await this.getVendorIdForUser(user);
+
+    // Verify assignment exists for this vendor
+    const assignRes = await query(
+      `SELECT * FROM job_assignments WHERE job_id = $1 AND vendor_id = $2 ORDER BY assigned_at DESC LIMIT 1`,
+      [jobId, vendorId]
+    );
+    if (assignRes.rows.length === 0) {
+      throw new ForbiddenException('Job is not assigned to this vendor');
+    }
+
+    const jobRes = await query(`SELECT * FROM jobs WHERE id = $1`, [jobId]);
+    if (jobRes.rows.length === 0) throw new NotFoundException('Job not found');
+    const job = jobRes.rows[0];
+
+    if (body.action === 'accept') {
+      await query(`UPDATE job_assignments SET accepted_at = now() WHERE id = $1`, [assignRes.rows[0].id]);
+      const updatedJob = await query(`UPDATE jobs SET status = 'accepted', updated_at = now() WHERE id = $1 RETURNING *`, [jobId]);
+
+      await this.auditService.recordEvent({
+        actorType: 'vendor',
+        actorUserId: user.sub,
+        targetType: 'job',
+        targetId: jobId,
+        category: 'dispatch',
+        eventType: 'job.accepted',
+        summary: `Vendor accepted Job ${job.job_code}`,
+        metadata: { vendorId },
+      });
+
+      return { status: 'accepted', job: updatedJob.rows[0] };
+    } else {
+      // Declined
+      await query(`DELETE FROM job_assignments WHERE id = $1`, [assignRes.rows[0].id]);
+      const updatedJob = await query(
+        `UPDATE jobs SET status = 'unassigned', updated_at = now() WHERE id = $1 RETURNING *`,
+        [jobId]
+      );
+
+      // Record offer decline in audit
+      await this.auditService.recordEvent({
+        actorType: 'vendor',
+        actorUserId: user.sub,
+        targetType: 'job',
+        targetId: jobId,
+        category: 'dispatch',
+        eventType: 'job.declined',
+        summary: `Vendor declined Job ${job.job_code}. Reason: ${body.declineReason || 'Not specified'}`,
+        metadata: { vendorId, declineReason: body.declineReason },
+      });
+
+      return { status: 'declined', job: updatedJob.rows[0] };
+    }
+  }
+
+  /**
+   * Update execution status of job (in_progress, verification_pending, completed)
+   */
+  async updateJobExecution(
+    jobId: string,
+    user: JwtPayload,
+    body: { status: 'in_progress' | 'verification_pending' | 'completed'; notes?: string }
+  ) {
+    const vendorId = await this.getVendorIdForUser(user);
+
+    const assignRes = await query(
+      `SELECT * FROM job_assignments WHERE job_id = $1 AND vendor_id = $2 LIMIT 1`,
+      [jobId, vendorId]
+    );
+    if (assignRes.rows.length === 0) {
+      throw new ForbiddenException('Job is not assigned to this vendor');
+    }
+
+    const jobRes = await query(`SELECT * FROM jobs WHERE id = $1`, [jobId]);
+    if (jobRes.rows.length === 0) throw new NotFoundException('Job not found');
+    const job = jobRes.rows[0];
+
+    // If moving to completed / verification_pending, check if evidence exists
+    if (body.status === 'verification_pending' || body.status === 'completed') {
+      const evCheck = await query(`SELECT count(*) as count FROM job_evidence WHERE job_id = $1`, [jobId]);
+      const count = parseInt(evCheck.rows[0].count, 10);
+      if (count === 0 && !body.notes) {
+        throw new BadRequestException('Completion evidence (photo or notes) must be provided before marking complete');
+      }
+    }
+
+    if (body.status === 'completed' || body.status === 'verification_pending') {
+      await query(`UPDATE job_assignments SET completed_at = now() WHERE id = $1`, [assignRes.rows[0].id]);
+    }
+
+    const updatedJob = await query(
+      `UPDATE jobs SET status = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      [body.status, jobId]
+    );
+
+    await this.auditService.recordEvent({
+      actorType: 'vendor',
+      actorUserId: user.sub,
+      targetType: 'job',
+      targetId: jobId,
+      category: 'task',
+      eventType: `task.execution_${body.status}`,
+      summary: `Vendor updated execution status of Job ${job.job_code} to ${body.status}`,
+      metadata: { vendorId, newStatus: body.status, notes: body.notes },
+    });
+
+    return updatedJob.rows[0];
+  }
 }

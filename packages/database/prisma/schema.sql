@@ -266,6 +266,25 @@ CREATE INDEX IF NOT EXISTS idx_jobs_org ON jobs(organization_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_property ON jobs(property_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS rework_parent_job_id UUID REFERENCES jobs(id) ON DELETE SET NULL;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS rework_reason TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS verified_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS job_evidence (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+  vendor_id UUID REFERENCES vendors(id) ON DELETE CASCADE,
+  uploaded_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  evidence_type TEXT NOT NULL CHECK (evidence_type IN ('before_photo', 'after_photo', 'receipt', 'notes', 'signature')),
+  file_url TEXT NOT NULL,
+  notes TEXT,
+  gps_latitude NUMERIC(10, 7),
+  gps_longitude NUMERIC(10, 7),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_job_evidence_job ON job_evidence(job_id);
+
 CREATE TABLE IF NOT EXISTS job_offers (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,

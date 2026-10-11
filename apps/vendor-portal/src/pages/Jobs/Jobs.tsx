@@ -1,5 +1,5 @@
-// apps/vendor-portal/src/pages/Jobs/Jobs.tsx
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { apiFetch } from '../../utils/api';
 import { useVendor } from '../../context/VendorContext';
 import {
     type IncomingJob, type ActiveJob, type CompletedJob, type HistoryJob,
@@ -12,7 +12,7 @@ import {
 } from './JobsDrawers';
 import './Jobs.css';
 
-/* ── DATA (seed) — matches the original prototype ── */
+/* ── DATA (seed) — fallback in case of connection delay ── */
 const INCOMING_SEED: IncomingJob[] = [
     {
         id: 'i-001', taskId: 'TSK-9001', workflowClass: 'Emergency', trade: 'Pool & Water Systems',
@@ -324,6 +324,128 @@ export default function Jobs() {
     const [pauseTarget, setPauseTarget] = useState<string | null>(null);
     const [callTarget, setCallTarget] = useState<string | null>(null);
 
+    /* ── Fetch Live Jobs from Backend ── */
+    useEffect(() => {
+        apiFetch('/api/v1/vendors/portal/jobs')
+            .then((r) => r.json())
+            .then((body) => {
+                const list = body.data || body;
+                if (Array.isArray(list) && list.length > 0) {
+                    const incList: IncomingJob[] = [];
+                    const actList: ActiveJob[] = [];
+                    const compList: CompletedJob[] = [];
+                    const histList: HistoryJob[] = [];
+
+                    list.forEach((j: any) => {
+                        const baseJob = {
+                            id: j.id,
+                            taskId: j.job_code || `TSK-${j.id.slice(-4)}`,
+                            workflowClass: j.workflow_class || 'Standard Repair',
+                            trade: j.trade_code || 'General',
+                            title: j.title,
+                            property: j.property_name || 'Property',
+                            address: `${j.address_line_1 || ''}, ${j.city || ''} ${j.state || ''}`,
+                            city: j.city || 'FL',
+                            dist: 'Local',
+                            pm: j.organization_name || 'Property Manager',
+                            jobType: j.service_type || 'Repair',
+                            payout: j.payout_amount ? Number(j.payout_amount) : 150,
+                            issue: j.description || j.title,
+                            scope: j.description || 'Standard inspection and maintenance',
+                            time: j.scheduled_start ? new Date(j.scheduled_start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'ASAP',
+                            dur: `${j.estimated_duration_minutes || 60} min`,
+                            access: true,
+                        };
+
+                        if (j.status === 'assigned' || j.status === 'dispatching') {
+                            incList.push({
+                                ...baseJob,
+                                type: j.severity === 'critical' ? 'emg' : 'new',
+                                priority: j.severity ? j.severity.toUpperCase() : 'NORMAL',
+                                deadline: '15 min response window',
+                                deadlineClass: j.severity === 'critical' ? 'urgent' : 'warn',
+                            });
+                        } else if (j.status === 'accepted' || j.status === 'in_progress') {
+                            actList.push({
+                                ...baseJob,
+                                status: j.status === 'accepted' ? 'accepted' : 'in-progress',
+                                priority: j.severity ? j.severity.toUpperCase() : 'NORMAL',
+                                step: j.status === 'in_progress' ? 2 : 1,
+                                totalSteps: 4,
+                                onTime: 'On track',
+                                onTimeClass: 'ok',
+                                checklist: [
+                                    { done: true, text: 'Arrive at property & inspect' },
+                                    { done: j.status === 'in_progress', text: 'Perform required service' },
+                                    { done: false, text: 'Take photo evidence & upload' },
+                                    { done: false, text: 'Submit completion report' },
+                                ],
+                                timeline: [
+                                    { event: 'Job accepted', time: 'Today', state: 'ok' },
+                                    ...(j.status === 'in_progress' ? [{ event: 'Work in progress', time: 'Now', state: 'ok' as const }] : []),
+                                ],
+                                beforePhotos: [],
+                                afterPhotos: [],
+                                materialsUsed: [],
+                            });
+                        } else if (j.status === 'verification_pending') {
+                            compList.push({
+                                id: j.id,
+                                taskId: j.job_code || `TSK-${j.id.slice(-4)}`,
+                                workflowClass: j.workflow_class || 'Standard Repair',
+                                trade: j.trade_code || 'General',
+                                date: 'Today',
+                                title: j.title,
+                                property: j.property_name || 'Property',
+                                city: j.city || 'FL',
+                                pm: j.organization_name || 'Property Manager',
+                                address: `${j.address_line_1 || ''}, ${j.city || ''} ${j.state || ''}`,
+                                payout: j.payout_amount ? `$${j.payout_amount}` : '$150',
+                                payStatus: 'awaiting-payment',
+                                payMethod: 'Direct Deposit',
+                                payRef: 'PENDING',
+                                payDate: 'Upon Verification',
+                                payRecordedAt: null,
+                                reminderCount: 0,
+                                lastReminderAt: null,
+                                reminderSentAt: null,
+                                completedAt: 'Today',
+                                verifiedAt: '',
+                                waitingDays: 0,
+                                overdue: false,
+                                disputeAt: null,
+                                disputeReason: null,
+                            });
+                        } else if (j.status === 'closed' || j.status === 'completed') {
+                            histList.push({
+                                id: j.id,
+                                taskId: j.job_code || `TSK-${j.id.slice(-4)}`,
+                                workflowClass: j.workflow_class || 'Standard Repair',
+                                trade: j.trade_code || 'General',
+                                date: new Date(j.created_at || Date.now()).toLocaleDateString(),
+                                title: j.title,
+                                property: j.property_name || 'Property',
+                                pm: j.organization_name || 'Property Manager',
+                                status: 'completed',
+                                payout: j.payout_amount ? `$${j.payout_amount}` : '$150',
+                                payStatus: 'paid',
+                                payMethod: 'Direct Deposit',
+                                payRef: 'TRF-OK',
+                                payDate: 'Today',
+                                incident: null,
+                            });
+                        }
+                    });
+
+                    if (incList.length > 0) setIncoming(incList);
+                    if (actList.length > 0) setActive(actList);
+                    if (compList.length > 0) setCompleted(compList);
+                    if (histList.length > 0) setHistory(histList);
+                }
+            })
+            .catch((err) => console.warn('Could not load vendor jobs, using cached state', err));
+    }, []);
+
     /* ── Find any job by id ── */
     const allJobs = useMemo(
         () => [...incoming, ...active, ...completed, ...history],
@@ -342,12 +464,14 @@ export default function Jobs() {
     };
 
     /* ── Accept/decline incoming ── */
-    const acceptJob = (id: string) => {
+    const acceptJob = async (id: string) => {
         const j = incoming.find((x) => x.id === id);
         if (!j) return;
+        
+        // Optimistic UI
         setIncoming((list) => list.filter((x) => x.id !== id));
         setActive((list) => [{
-            id: `a-${Date.now()}`,
+            id: j.id,
             taskId: j.taskId,
             workflowClass: j.workflowClass,
             trade: j.trade,
@@ -373,25 +497,48 @@ export default function Jobs() {
             gateCode: j.gateCode,
             lockBox: j.lockBox,
             parking: j.parking,
-            checklist: j.type === 'emg' ? [
+            checklist: [
                 { done: false, text: 'Assess leak source and severity' },
-                { done: false, text: 'Shut off supply if active leak confirmed' },
-                { done: false, text: 'Document with photos before any repair' },
-                { done: false, text: 'Notify PM with status update on arrival' },
+                { done: false, text: 'Document with photos before repair' },
+                { done: false, text: 'Perform repair & complete work' },
                 { done: false, text: 'Submit completion report' },
-            ] : [],
+            ],
             timeline: [{ event: 'Job accepted', time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }), state: 'ok' }],
             beforePhotos: [], afterPhotos: [], materialsUsed: [],
         }, ...list]);
         showToast(j.type === 'emg' ? 'Emergency accepted — en route' : `${j.title} accepted`, 'success');
         setTab('active');
+
+        // Persist to backend if real ID
+        if (!id.startsWith('i-')) {
+            try {
+                await apiFetch(`/api/v1/vendors/portal/jobs/${id}/respond`, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'accept' }),
+                });
+            } catch (e) {
+                console.error('Failed to notify backend of acceptance:', e);
+            }
+        }
     };
 
-    const confirmDecline = () => {
+    const confirmDecline = async () => {
         if (!declineTarget) return;
-        setIncoming((list) => list.filter((x) => x.id !== declineTarget));
+        const id = declineTarget;
+        setIncoming((list) => list.filter((x) => x.id !== id));
         setDeclineTarget(null);
         showToast('Job declined · logged to dispatch', 'info');
+
+        if (!id.startsWith('i-')) {
+            try {
+                await apiFetch(`/api/v1/vendors/portal/jobs/${id}/respond`, {
+                    method: 'POST',
+                    body: JSON.stringify({ action: 'decline', declineReason: 'Vendor schedule full' }),
+                });
+            } catch (e) {
+                console.error('Failed to notify backend of decline:', e);
+            }
+        }
     };
 
     const confirmPause = (reason: string, notes: string) => {

@@ -1,6 +1,6 @@
 // src/views/compliance/modals/TemplateModal.jsx
 import { useState, useEffect } from 'react';
-import { apiFetch } from '../../../../utils/api';
+import { apiFetch } from '../../../utils/api';
 
 export default function TemplateModal({ open, onClose, onApply }) {
   const [selected, setSelected] = useState(null);

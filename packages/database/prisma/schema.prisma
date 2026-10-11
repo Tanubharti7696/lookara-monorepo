@@ -31,7 +31,6 @@ model Organization {
   jobs                Job[]
   incidents           Incident[]
   approvals           Approval[]
-  approvals           Approval[]
   disputes            Dispute[]
   flags               Flag[]
   slaTemplates        SlaTemplate[]
