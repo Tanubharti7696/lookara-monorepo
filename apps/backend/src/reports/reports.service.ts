@@ -23,9 +23,9 @@ export class ReportsService {
     // For now we will return some dynamic logic based on actual counts
     const countsRes = await query(`
       SELECT 
-        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_tasks,
+        COUNT(CASE WHEN status = 'completed' OR status = 'closed' THEN 1 END) as completed_tasks,
         COUNT(CASE WHEN severity = 'critical' THEN 1 END) as critical_tasks
-      FROM tasks 
+      FROM jobs 
       WHERE organization_id = $1
     `, [orgId]);
 
