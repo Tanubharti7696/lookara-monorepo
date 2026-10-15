@@ -16,7 +16,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const client = new Client({ connectionString: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_YTokPhAtBO95@ep-solitary-union-b4hewc1r-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require' });
+  const client = new Client({ connectionString: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/lookara' });
   try {
     await client.connect();
 

@@ -251,7 +251,8 @@ export class TasksService {
       throw new ForbiddenException('Not authorized to delete this task');
     }
 
-    await query(`DELETE FROM jobs WHERE id = $1`, [id]);
+    // Canonical architecture: Preserve Task history; avoid destructive deletion of operational records
+    await query(`UPDATE jobs SET status = 'cancelled', updated_at = now() WHERE id = $1`, [id]);
     
     await this.auditService.recordEvent({
       actorType: user.isAdmin ? 'admin' : 'pm',
@@ -259,11 +260,11 @@ export class TasksService {
       targetType: 'job',
       targetId: id,
       category: 'task',
-      eventType: 'task.deleted',
-      summary: `Task ${task.job_code} (${task.title}) was deleted`,
+      eventType: 'task.cancelled',
+      summary: `Task ${task.job_code} (${task.title}) was cancelled and archived`,
     });
 
-    return { success: true };
+    return { success: true, message: 'Task cancelled and archived' };
   }
 
   async getEvidence(jobId: string, user: JwtPayload) {
@@ -358,50 +359,18 @@ export class TasksService {
         throw new BadRequestException('A reason is required when rejecting work for rework');
       }
 
-      // Mark original task status back to in_progress or escalated
-      await query(
-        `UPDATE jobs SET status = 'escalated', rework_reason = $1, updated_at = now() WHERE id = $2`,
+      // Canonical architecture: ordinary rework normally remains on the original Task
+      const reworkRes = await query(
+        `UPDATE jobs 
+         SET status = 'in_progress', 
+             rework_reason = $1, 
+             rework_count = COALESCE(rework_count, 0) + 1, 
+             updated_at = now() 
+         WHERE id = $2 
+         RETURNING *`,
         [data.reworkReason, jobId]
       );
-
-      // Create linked Rework Task
-      const reworkJobCode = `${task.job_code}-RW`;
-      const createReworkSql = `
-        INSERT INTO jobs (
-          job_code, organization_id, property_id, created_by_user_id,
-          trade_code, workflow_class, subtype, severity, source,
-          title, description, service_type, payout_amount, status,
-          rework_parent_job_id, rework_reason
-        ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, 'high', 'rework',
-          $8, $9, $10, 0, 'assigned', $11, $12
-        ) RETURNING *
-      `;
-      const reworkRes = await query(createReworkSql, [
-        reworkJobCode,
-        task.organization_id,
-        task.property_id,
-        user.sub,
-        task.trade_code,
-        task.workflow_class,
-        'rework',
-        `[REWORK] ${task.title}`,
-        `REWORK REQUIRED: ${data.reworkReason}\n\nOriginal Scope:\n${task.description || ''}`,
-        task.service_type,
-        task.id,
-        data.reworkReason,
-      ]);
-
-      const reworkTask = reworkRes.rows[0];
-
-      // Automatically assign to the same vendor if original assignment exists
-      const assignRes = await query(`SELECT vendor_id FROM job_assignments WHERE job_id = $1 ORDER BY assigned_at DESC LIMIT 1`, [jobId]);
-      if (assignRes.rows.length > 0) {
-        await query(
-          `INSERT INTO job_assignments (job_id, vendor_id, assignment_type) VALUES ($1, $2, 'manual')`,
-          [reworkTask.id, assignRes.rows[0].vendor_id]
-        );
-      }
+      const updatedTask = reworkRes.rows[0];
 
       await this.auditService.recordEvent({
         actorType: 'pm',
@@ -410,14 +379,13 @@ export class TasksService {
         targetId: jobId,
         category: 'task',
         eventType: 'task.rework_triggered',
-        summary: `Task ${task.job_code} rejected by PM — spawned Rework Task ${reworkTask.job_code}`,
-        metadata: { reworkTaskId: reworkTask.id, reason: data.reworkReason },
+        summary: `Task ${task.job_code} flagged for rework by PM (Cycle #${updatedTask.rework_count || 1}) - remained on original Task`,
+        metadata: { jobId, reworkCount: updatedTask.rework_count, reason: data.reworkReason },
       });
 
       return {
-        status: 'rework_created',
-        originalTaskId: jobId,
-        reworkTask,
+        status: 'rework_required',
+        task: updatedTask,
       };
     }
   }

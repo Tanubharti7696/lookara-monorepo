@@ -152,10 +152,8 @@ export class VendorsService {
     const vRes = await query(`SELECT id FROM vendors WHERE user_id = $1 LIMIT 1`, [user.sub]);
     if (vRes.rows.length > 0) return vRes.rows[0].id;
     
-    // Fallback: If development/admin context or test user, pick first active vendor
-    const fallbackRes = await query(`SELECT id FROM vendors WHERE lifecycle_status = 'active' LIMIT 1`);
-    if (fallbackRes.rows.length > 0) return fallbackRes.rows[0].id;
-    throw new NotFoundException('Vendor profile not found for user');
+    // Strict authorization: do not fall back to an arbitrary vendor
+    throw new ForbiddenException('No vendor profile associated with the authenticated user');
   }
 
   /**
