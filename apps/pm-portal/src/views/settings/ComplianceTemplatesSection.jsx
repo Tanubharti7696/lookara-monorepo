@@ -1,6 +1,6 @@
-// src/views/settings/ComplianceTemplatesSection.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../../utils/api';
 import { CT_TEMPLATES } from '../../data/settingsData';
 
 const STATUS_CLS = {
@@ -11,8 +11,39 @@ const STATUS_CLS = {
 
 export default function ComplianceTemplatesSection({ onToast }) {
   const navigate = useNavigate();
-  const [templates, setTemplates] = useState(CT_TEMPLATES);
+  const [templates, setTemplates] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+
+  const fetchTemplates = () => {
+    setLoading(true);
+    apiFetch('/api/v1/compliance/templates')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setTemplates(data.map(t => ({
+            id: t.id,
+            name: t.name,
+            jurisdiction: t.jurisdiction || 'New York, NY',
+            reqCount: t.items_count || (t.items ? t.items.length : 6),
+            applied: t.applied_properties_count || 0,
+            status: t.status || 'active',
+            updated: t.updated_at ? new Date(t.updated_at).toLocaleDateString() : 'Recently',
+            mandatory: t.mandatory_count || 4,
+          })));
+        } else {
+          setTemplates(CT_TEMPLATES);
+        }
+      })
+      .catch(() => {
+        setTemplates(CT_TEMPLATES);
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchTemplates();
+  }, []);
 
   const filtered = templates.filter(t =>
     (t.name + ' ' + t.jurisdiction).toLowerCase().includes(query.toLowerCase())
