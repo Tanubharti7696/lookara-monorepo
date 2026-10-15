@@ -634,36 +634,82 @@ export default function ComplianceTemplates() {
     return true;
   }), [mappingRows, mapSearch, mapCity]);
 
-  const saveTemplate = (payload, id, mode) => {
+  const saveTemplate = async (payload, id, mode) => {
     if (!payload.name.trim()) { showToast('Template name is required', 'error'); return; }
 
-    if (mode === 'new') {
-      const newId = 'custom-' + Date.now();
-      setTemplates(t => ({
-        ...t,
-        [newId]: {
-          id: newId, ...payload, status: 'draft',
-          icon: '📋', appliedTo: [],
-        },
-      }));
-      showToast(`Template created: ${payload.name}`, 'success');
-    } else {
-      setTemplates(t => ({
-        ...t,
-        [id]: { ...t[id], ...payload },
-      }));
-      showToast(`Template saved: ${payload.name}`, 'success');
+    try {
+      const res = await apiFetch('/api/v1/compliance/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: mode === 'new' ? undefined : id,
+          name: payload.name,
+          jurisdiction: payload.jurisdiction,
+          status: payload.status || 'active',
+          requirements: payload.requirements,
+        }),
+      });
+
+      if (res.ok) {
+        const saved = await res.json();
+        setTemplates(t => ({
+          ...t,
+          [saved.id]: {
+            id: saved.id,
+            name: saved.name,
+            icon: '📋',
+            jurisdiction: saved.jurisdiction || payload.jurisdiction,
+            cycle: payload.cycle || 'Annual',
+            status: saved.status || 'active',
+            desc: payload.desc || `${saved.name} requirement template`,
+            autoRemind: payload.autoRemind ?? true,
+            blockOps: payload.blockOps ?? true,
+            notifyOwner: payload.notifyOwner ?? true,
+            requirements: saved.requirements || payload.requirements || [],
+            appliedTo: t[id]?.appliedTo || [],
+          },
+        }));
+        showToast(`Template ${mode === 'new' ? 'created' : 'saved'}: ${payload.name}`, 'success');
+      } else {
+        throw new Error('Backend failed');
+      }
+    } catch {
+      // Local fallback
+      if (mode === 'new') {
+        const newId = 'custom-' + Date.now();
+        setTemplates(t => ({
+          ...t,
+          [newId]: {
+            id: newId, ...payload, status: 'draft',
+            icon: '📋', appliedTo: [],
+          },
+        }));
+        showToast(`Template created: ${payload.name}`, 'success');
+      } else {
+        setTemplates(t => ({
+          ...t,
+          [id]: { ...t[id], ...payload },
+        }));
+        showToast(`Template saved: ${payload.name}`, 'success');
+      }
     }
     setEditor({ open: false, mode: 'edit', id: null });
   };
 
-  const deleteTemplate = () => {
+  const deleteTemplate = async () => {
     const id = editor.id;
     const tmpl = templates[id];
     if (tmpl?.appliedTo?.length) {
       showToast(`Cannot delete — template is applied to ${tmpl.appliedTo.length} properties.`, 'error');
       return;
     }
+
+    try {
+      await apiFetch(`/api/v1/compliance/templates/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      console.error(e);
+    }
+
     setTemplates(t => {
       const n = { ...t };
       delete n[id];

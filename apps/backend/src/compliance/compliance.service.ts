@@ -135,4 +135,11 @@ export class ComplianceService {
 
     return this.getTemplate(user, templateId);
   }
+
+  async deleteTemplate(user: JwtPayload, templateId: string) {
+    const orgId = user.activeOrganizationId;
+    await query(`DELETE FROM template_requirements WHERE template_id = $1`, [templateId]);
+    await query(`DELETE FROM compliance_templates WHERE id = $1 AND organization_id = $2`, [templateId, orgId]);
+    return { success: true };
+  }
 }

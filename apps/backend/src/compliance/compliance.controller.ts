@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Query, UseGuards, Body } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Query, UseGuards, Body } from '@nestjs/common';
 import { ComplianceService } from './compliance.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -32,5 +32,10 @@ export class ComplianceController {
   @Post('templates')
   async saveTemplate(@CurrentUser() user: JwtPayload, @Body() body: any) {
     return this.complianceService.saveTemplate(user, body);
+  }
+
+  @Delete('templates/:id')
+  async deleteTemplate(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.complianceService.deleteTemplate(user, id);
   }
 }
