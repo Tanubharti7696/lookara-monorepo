@@ -1,80 +1,126 @@
+import { useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import ProfileSection               from './settings/ProfileSection';
-import AccountSection               from './settings/AccountSection';
-import ComplianceTemplatesSection   from './settings/ComplianceTemplatesSection';
-import OrganizationSection          from './settings/OrganizationSection';
-import NotificationsSection         from './settings/NotificationsSection';
-import PreferencesSection           from './settings/PreferencesSection';
-import TeamSection                  from './settings/TeamSection';
-import IntegrationsSection          from './settings/IntegrationsSection';
-import SecuritySection              from './settings/SecuritySection';
-import ReportsSection               from './settings/ReportsSection';
-import SLATemplatesSection          from './settings/SLATemplatesSection';
-import './SettingsView.css';
+import './settings.css';
+import { ToastProvider, useToast } from './settings/ui';
 
-const SECTIONS = [
-  { key: 'profile',             label: 'Profile',              icon: '👤', group: 'Personal'    },
-  { key: 'account',             label: 'Account',              icon: '🏢', group: 'Workspace'   },
-  { key: 'notifications',       label: 'Notifications',        icon: '🔔', group: 'Workspace'   },
-  { key: 'preferences',         label: 'Preferences',          icon: '⚙️', group: 'Workspace'   },
-  { key: 'team',                label: 'Team',                 icon: '👥', group: 'Workspace'   },
-  { key: 'integrations',        label: 'Integrations',         icon: '🔌', group: 'Advanced'    },
-  { key: 'security',            label: 'Security',             icon: '🔒', group: 'Advanced'    },
-  { key: 'reports',             label: 'Scheduled Reports',    icon: '📊', group: 'Advanced'    },
-  { key: 'complianceTemplates', label: 'Compliance Templates', icon: '📋', group: 'Governance'  },
-  { key: 'slaTemplates',        label: 'SLA Templates',        icon: '⏱',  group: 'Governance'  },
+import ProfileSettings from './settings/sections/ProfileSettings';
+import AccountSettings from './settings/sections/AccountSettings';
+import NotificationSettings from './settings/sections/NotificationSettings';
+import PreferencesSettings from './settings/sections/PreferencesSettings';
+import TeamSettings from './settings/sections/TeamSettings';
+import IntegrationsSettings from './settings/sections/IntegrationsSettings';
+import SecuritySettings from './settings/sections/SecuritySettings';
+import ScheduledReports from './settings/sections/ScheduledReports';
+import SLATemplates from './settings/sections/SLATemplates';
+import ComplianceTemplates from './settings/sections/ComplianceTemplates';
+
+const NAV_ITEMS = [
+  { id: 'profile', label: 'Profile' },
+  { id: 'account', label: 'Account' },
+  { id: 'notifications', label: 'Notifications' },
+  { id: 'preferences', label: 'Preferences' },
+  { id: 'team', label: 'Team' },
+  { id: 'integrations', label: 'Integrations' },
+  { id: 'security', label: 'Security' },
+  { id: 'reports', label: 'Scheduled Reports' },
+  { id: 'complianceTemplates', label: 'Compliance Templates' },
+  { id: 'slaTemplates', label: 'SLA Templates' },
 ];
 
-export default function Settings({ onToast }) {
+function SettingsContent({ onToast }) {
   const navigate = useNavigate();
   const { section } = useParams();
   const active = section || 'profile';
 
-  const groups = SECTIONS.reduce((acc, s) => {
-    (acc[s.group] = acc[s.group] || []).push(s);
-    return acc;
-  }, {});
+  const contentRef = useRef(null);
+  const showToast = useToast();
+
+  const handleSearch = (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    if (!q || !contentRef.current) return;
+    const cards = contentRef.current.querySelectorAll('.card');
+    for (const card of cards) {
+      if (card.textContent.toLowerCase().includes(q)) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.style.transition = 'outline-color 0.3s';
+        card.style.outline = '3px solid var(--champagne-gold)';
+        card.style.outlineOffset = '4px';
+        setTimeout(() => { card.style.outline = 'none'; }, 2000);
+        return;
+      }
+    }
+    showToast('No results found', 'amber');
+  };
+
+  const renderSection = () => {
+    switch (active) {
+      case 'profile':             return <ProfileSettings />;
+      case 'account':
+      case 'organization':        return <AccountSettings />;
+      case 'notifications':       return <NotificationSettings />;
+      case 'preferences':         return <PreferencesSettings />;
+      case 'team':                return <TeamSettings />;
+      case 'integrations':        return <IntegrationsSettings />;
+      case 'security':            return <SecuritySettings />;
+      case 'reports':             return <ScheduledReports />;
+      case 'slaTemplates':
+      case 'sla':                 return <SLATemplates />;
+      case 'complianceTemplates':
+      case 'compliance':          return <ComplianceTemplates />;
+      default:                    return <ProfileSettings />;
+    }
+  };
 
   return (
-    <div className="settings-shell">
-      <aside className="settings-nav">
-        <div className="settings-nav__head">
-          <div className="settings-nav__eyebrow">Workspace</div>
-          <div className="settings-nav__title">Settings</div>
+    <div className="page-content" style={{ width: '100%', minHeight: '100%' }}>
+      <div className="page-header" style={{ marginBottom: 20 }}>
+        <div className="header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--white)', lineHeight: 1.2 }}>Settings</div>
+            <div style={{ fontSize: 13, color: 'var(--white-muted)', marginTop: 4 }}>
+              Manage your organization configuration, operational templates, and security credentials.
+            </div>
+          </div>
+          <div className="search-container" style={{ width: 340 }}>
+            <span className="search-icon">🔍</span>
+            <input
+              type="text"
+              className="search-input"
+              style={{ width: '100%' }}
+              placeholder="Search settings…"
+              onChange={handleSearch}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-layout">
+        <div className="settings-sidebar">
+          <div className="settings-nav">
+            {NAV_ITEMS.map(item => (
+              <div
+                key={item.id}
+                className={`settings-nav-item${active === item.id ? ' active' : ''}`}
+                onClick={() => navigate(`/settings/${item.id}`)}
+              >
+                {item.label}
+              </div>
+            ))}
+          </div>
         </div>
 
-        <nav className="settings-nav__list">
-          {Object.entries(groups).map(([group, items]) => (
-            <div key={group} className="settings-nav__group">
-              <div className="settings-nav__group-label">{group}</div>
-              {items.map((s) => (
-                <button
-                  key={s.key}
-                  type="button"
-                  className={`settings-nav__item ${active === s.key ? 'active' : ''}`}
-                  onClick={() => navigate(`/settings/${s.key}`)}
-                >
-                  <span className="settings-nav__icon">{s.icon}</span>
-                  <span className="settings-nav__label">{s.label}</span>
-                </button>
-              ))}
-            </div>
-          ))}
-        </nav>
-      </aside>
-
-      <main className="settings-main">
-        {active === 'profile'             && <ProfileSection             onToast={onToast} />}
-        {(active === 'account' || active === 'organization') && <AccountSection onToast={onToast} />}
-        {active === 'notifications'       && <NotificationsSection       onToast={onToast} />}
-        {active === 'preferences'         && <PreferencesSection         onToast={onToast} />}
-        {active === 'team'                && <TeamSection                onToast={onToast} />}
-        {active === 'integrations'        && <IntegrationsSection        onToast={onToast} />}
-        {active === 'security'            && <SecuritySection            onToast={onToast} />}
-        {active === 'reports'             && <ReportsSection             onToast={onToast} />}
-        {(active === 'complianceTemplates' || active === 'compliance') && <ComplianceTemplatesSection onToast={onToast} />}
-        {(active === 'slaTemplates' || active === 'sla')               && <SLATemplatesSection        onToast={onToast} />}
-      </main>
+        <div className="settings-content" ref={contentRef}>
+          {renderSection()}
+        </div>
+      </div>
     </div>
+  );
+}
+
+export default function Settings({ onToast }) {
+  return (
+    <ToastProvider onExternalToast={onToast}>
+      <SettingsContent onToast={onToast} />
+    </ToastProvider>
   );
 }
