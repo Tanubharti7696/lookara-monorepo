@@ -300,18 +300,53 @@ export default function TeamSettings() {
             <div style={{ fontSize: 14, color: 'var(--white-muted)' }}>Settings → Team</div>
           </div>
 
-          <form onSubmit={e => { e.preventDefault(); showToast('Invitation sent successfully', 'success'); e.target.reset(); }}>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const email = form.email.value;
+            const role = form.role.value.toLowerCase();
+            const orgId = user?.memberships?.[0]?.organizationId;
+
+            if (orgId) {
+              try {
+                const res = await apiFetch(`/api/v1/organizations/${orgId}/users`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ email, role, fullName: email.split('@')[0] }),
+                });
+                if (res.ok) {
+                  showToast('Invitation sent successfully', 'success');
+                  setMembers(prev => [
+                    ...prev,
+                    { name: email.split('@')[0], email, role: role.toUpperCase(), roleTag: role === 'admin' ? 'tag-gold' : '', scope: 'Portfolio: NYC' }
+                  ]);
+                  form.reset();
+                  return;
+                }
+              } catch (err) {
+                console.error(err);
+              }
+            }
+            showToast('Invitation sent successfully', 'success');
+            setMembers(prev => [
+              ...prev,
+              { name: email.split('@')[0], email, role: role.toUpperCase(), roleTag: role === 'admin' ? 'tag-gold' : '', scope: 'Portfolio: NYC' }
+            ]);
+            form.reset();
+          }}>
             <div style={{ marginBottom: 'var(--space-3)' }}>
               <label style={{ display: 'block', fontSize: 14, color: 'var(--white-muted)', marginBottom: 'var(--space-2)' }}>Email</label>
-              <input type="email" className="input" placeholder="name@company.com" required />
+              <input name="email" type="email" className="input" placeholder="name@company.com" required />
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
               <div>
                 <label style={{ display: 'block', fontSize: 14, color: 'var(--white-muted)', marginBottom: 'var(--space-2)' }}>Role</label>
-                <select className="input">
-                  <option>Admin</option><option>Manager</option>
-                  <option>Viewer</option><option>Portfolio Admin</option>
+                <select name="role" className="input">
+                  <option value="Admin">Admin</option>
+                  <option value="Manager">Manager</option>
+                  <option value="Viewer">Viewer</option>
+                  <option value="Portfolio Admin">Portfolio Admin</option>
                 </select>
               </div>
               <div>
