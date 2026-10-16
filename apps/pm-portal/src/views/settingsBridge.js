@@ -817,3 +817,116 @@ export function initSettingsBridge(containerEl, { showToast, currentUser, curren
   window.renderSLATable();
   window.renderCTMapping();
 }
+
+  // 7. REAL-WORLD DYNAMIC PREFERENCES IMPLEMENTATION
+  window.applyWorkspaceTheme = function(themeValue) {
+    const isLight = themeValue.toLowerCase().includes('light');
+    if (isLight) {
+      document.documentElement.setAttribute('data-theme', 'light');
+      document.body.classList.add('light-theme');
+      document.documentElement.style.setProperty('--bg', '#F8FAFC');
+      document.documentElement.style.setProperty('--bg-2', '#FFFFFF');
+      document.documentElement.style.setProperty('--panel', '#FFFFFF');
+      document.documentElement.style.setProperty('--graphite', '#F1F5F9');
+      document.documentElement.style.setProperty('--card-bg', '#FFFFFF');
+      document.documentElement.style.setProperty('--text', '#0F172A');
+      document.documentElement.style.setProperty('--text-2', '#475569');
+      document.documentElement.style.setProperty('--white', '#0F172A');
+      document.documentElement.style.setProperty('--white-muted', '#64748B');
+      document.documentElement.style.setProperty('--border', '#E2E8F0');
+      document.documentElement.style.setProperty('--border-soft', 'rgba(0,0,0,0.08)');
+      showToast('Switched to Light Mode workspace', 'success');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      document.body.classList.remove('light-theme');
+      document.documentElement.style.removeProperty('--bg');
+      document.documentElement.style.removeProperty('--bg-2');
+      document.documentElement.style.removeProperty('--panel');
+      document.documentElement.style.removeProperty('--graphite');
+      document.documentElement.style.removeProperty('--card-bg');
+      document.documentElement.style.removeProperty('--text');
+      document.documentElement.style.removeProperty('--text-2');
+      document.documentElement.style.removeProperty('--white');
+      document.documentElement.style.removeProperty('--white-muted');
+      document.documentElement.style.removeProperty('--border');
+      document.documentElement.style.removeProperty('--border-soft');
+      showToast('Switched to Dark Mode workspace', 'success');
+    }
+    localStorage.setItem('lookara_theme', isLight ? 'light' : 'dark');
+  };
+
+  window.applyWorkspaceDensity = function(densityValue) {
+    const isCompact = densityValue.toLowerCase().includes('compact');
+    if (isCompact) {
+      document.documentElement.style.setProperty('--space-4', '12px');
+      document.documentElement.style.setProperty('--space-3', '8px');
+      document.documentElement.style.setProperty('--space-2', '4px');
+      showToast('Workspace density set to Compact', 'info');
+    } else {
+      document.documentElement.style.removeProperty('--space-4');
+      document.documentElement.style.removeProperty('--space-3');
+      document.documentElement.style.removeProperty('--space-2');
+      showToast('Workspace density set to Comfortable', 'info');
+    }
+    localStorage.setItem('lookara_density', densityValue);
+  };
+
+  window.applyPrefChange = function(prefKey, val) {
+    localStorage.setItem(`lookara_pref_${prefKey}`, val);
+    showToast(`Updated ${prefKey}: ${val}`, 'info');
+  };
+
+  // 8. REAL-WORLD TEAM MEMBERS TABLE DATA (LOAD & RENDER)
+  window.loadAndRenderTeamMembers = async function() {
+    const tbody = document.getElementById('teamMembersTbody');
+    if (!tbody) return;
+
+    try {
+      if (currentOrg?.id) {
+        const res = await apiFetch(`/api/v1/organizations/${currentOrg.id}/users`);
+        const users = await res.json();
+        if (Array.isArray(users) && users.length > 0) {
+          tbody.innerHTML = users.map(u => `
+            <tr style="border-bottom: 1px solid var(--border);">
+              <td style="padding: 12px 14px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--graphite); display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--gold); border: 1px solid var(--border);">
+                    ${(u.full_name || u.email || 'U').substring(0, 2).toUpperCase()}
+                  </div>
+                  <div>
+                    <div style="font-weight: 600; color: var(--white); font-size: 14px;">${u.full_name || u.email.split('@')[0]}</div>
+                    <div style="font-size: 12px; color: var(--white-muted);">${u.email}</div>
+                  </div>
+                </div>
+              </td>
+              <td style="padding: 12px 14px;">
+                <span class="badge" style="background: rgba(212,175,55,0.12); color: var(--gold); border: 1px solid rgba(212,175,55,0.25); text-transform: capitalize;">
+                  ${u.role || 'manager'}
+                </span>
+              </td>
+              <td style="padding: 12px 14px; font-size: 13px; color: var(--white-muted);">
+                ${u.scope || 'All properties'}
+              </td>
+              <td style="padding: 12px 14px; text-align: right;">
+                <button class="btn btn-outline btn-small" onclick="showScopePicker()" title="Opens: Scope picker">Edit</button>
+              </td>
+            </tr>
+          `).join('');
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not load remote team members, using active roster', e);
+    }
+  };
+
+  // Trigger team loading
+  window.loadAndRenderTeamMembers();
+
+  // Restore saved theme on mount
+  const savedTheme = localStorage.getItem('lookara_theme');
+  if (savedTheme) {
+    window.applyWorkspaceTheme(savedTheme);
+    const themeSelect = document.getElementById('prefTheme');
+    if (themeSelect) themeSelect.value = savedTheme === 'light' ? 'Light Mode' : 'Dark Mode';
+  }
