@@ -1161,7 +1161,7 @@ export function initSettingsBridge(containerEl, { showToast, currentUser, curren
   // INITIALIZE TABLES & MAPPINGS
   window.renderSLATable();
   window.renderCTMapping();
-}
+
 
   // 7. REAL-WORLD DYNAMIC PREFERENCES IMPLEMENTATION
   window.applyWorkspaceTheme = function(themeValue) {
