@@ -57,8 +57,9 @@ function Shell() {
         return res.json();
       })
       .then((data) => {
-        if (data.data) {
-          setUser(data.data);
+        const u = data?.data || data?.user || (data?.email ? data : null);
+        if (u) {
+          setUser(u);
         }
       })
       .catch((err) => {
