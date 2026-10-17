@@ -423,12 +423,16 @@ export class AuthService {
       [newHash, userId],
     );
 
-    // Audit log
-    await query(
-      `INSERT INTO audit_events (event_code, actor_type, actor_user_id, target_type, target_id, category, event_type, summary)
-       VALUES ($1, 'user', $2, 'user', $3, 'security', 'auth.password_changed', 'User password changed successfully')`,
-      [`PWD-${Date.now()}`, userId, userId],
-    );
+    // Audit log (actor_type must be in: 'admin', 'pm', 'vendor', 'owner', 'system')
+    try {
+      await query(
+        `INSERT INTO audit_events (event_code, actor_type, actor_user_id, target_type, target_id, category, event_type, summary)
+         VALUES ($1, 'pm', $2, 'user', $3, 'security', 'auth.password_changed', 'User password changed successfully')`,
+        [`PWD-${Date.now()}`, userId, userId],
+      );
+    } catch (auditErr) {
+      console.warn('Could not record password change audit event:', auditErr);
+    }
 
     return { success: true, message: 'Password changed successfully' };
   }
