@@ -4,7 +4,37 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>pm-portal</title>
+    <title>Lookara | PM Portal</title>
+    <script>
+      // Immediate head script guaranteeing window.showToast exists before any DOM or modules run
+      window.showToast = function(msg, type) {
+        console.log('[Lookara Toast]', type || 'info', msg);
+        const existing = document.getElementById('lookara-global-toast');
+        if (existing) existing.remove();
+        const toast = document.createElement('div');
+        toast.id = 'lookara-global-toast';
+        toast.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:999999;padding:12px 18px;border-radius:8px;font-size:14px;font-weight:600;color:#fff;box-shadow:0 10px 25px rgba(0,0,0,0.5);display:flex;align-items:center;gap:10px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;';
+        if (type === 'success') {
+          toast.style.background = '#059669';
+          toast.style.border = '1px solid #10B981';
+          toast.textContent = '✓ ' + msg;
+        } else if (type === 'danger' || type === 'error') {
+          toast.style.background = '#DC2626';
+          toast.style.border = '1px solid #EF4444';
+          toast.textContent = '✕ ' + msg;
+        } else if (type === 'warning' || type === 'warn') {
+          toast.style.background = '#D97706';
+          toast.style.border = '1px solid #F59E0B';
+          toast.textContent = '⚠ ' + msg;
+        } else {
+          toast.style.background = '#1E293B';
+          toast.style.border = '1px solid #475569';
+          toast.textContent = 'ℹ ' + msg;
+        }
+        document.body.appendChild(toast);
+        setTimeout(() => { if (toast.parentElement) toast.remove(); }, 3200);
+      };
+    </script>
   </head>
   <body>
     <div id="root"></div>
