@@ -41,7 +41,7 @@ export default function SettingsView({ onToast }) {
               Manage your organization configuration, operational templates, and security credentials.
             </div>
           </div>
-          <div className="search-container" style={{ width: 340, position: 'relative', display: 'flex', alignItems: 'center' }}>
+          <div className="search-container" style={{ width: 340, position: 'relative', display: 'flex', alignItems: 'center', marginLeft: 'auto', flexShrink: 0 }}>
             <span className="search-icon" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', fontSize: 14 }}>🔍</span>
             <input
               type="text"
@@ -58,6 +58,7 @@ export default function SettingsView({ onToast }) {
               id="globalSearchSettings"
               onChange={(e) => {
                 const q = e.target.value.toLowerCase().trim();
+
                 if (!containerRef.current) return;
 
                 const navItems = containerRef.current.querySelectorAll('.settings-nav-item');

@@ -257,35 +257,34 @@
 .app-shell.sidebar-hidden .sidebar-autohide-sensor {
   display: block;
   position: fixed;
-  top: 0;
+  top: calc(25vh - 35px);
   left: 0;
-  width: 130px; /* half of sidebar width (260px / 2) */
-  height: 50vh;  /* half of screen height */
+  width: 14px;
+  height: 70px;
   z-index: 999;
   cursor: pointer;
   background: transparent;
 }
 
-/* Subtle gold indicator tab at the edge */
+/* Gold indicator tab at the edge */
 .app-shell.sidebar-hidden .sidebar-autohide-sensor::before {
   content: '';
   position: absolute;
-  top: 25vh;
+  top: 0;
   left: 0;
-  transform: translateY(-50%);
   width: 6px;
-  height: 70px;
+  height: 100%;
   border-radius: 0 6px 6px 0;
   background: var(--gold);
-  opacity: 0.9;
+  opacity: 0.95;
   box-shadow: 2px 0 10px rgba(212, 175, 55, 0.5);
-  pointer-events: none;
   transition: opacity 0.2s ease, width 0.2s ease;
 }
 
 .app-shell.sidebar-hidden .sidebar-autohide-sensor:hover::before {
   width: 10px;
 }
+
 
 .app-shell.sidebar-hidden .sidebar {
   transform: translateX(-100%);
