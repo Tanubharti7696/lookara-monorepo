@@ -25,22 +25,9 @@ export default function SettingsView({ onToast }) {
       currentOrg: organization,
     });
 
-    // Populate user profile info from auth if available
-    if (user) {
-      const emailInput = containerRef.current.querySelector('input[type="email"]');
-      if (emailInput && !emailInput.value) emailInput.value = user.email || '';
-      const nameInputs = containerRef.current.querySelectorAll('input[type="text"]');
-      if (nameInputs.length > 0 && user.name && !nameInputs[0].value) {
-        const parts = user.name.split(' ');
-        nameInputs[0].value = parts[0] || '';
-        if (nameInputs.length > 1) nameInputs[1].value = parts.slice(1).join(' ') || '';
-      }
-    }
-
-    // Populate org name if available
-    if (organization?.name) {
-      const companyInput = containerRef.current.querySelector('#companyName');
-      if (companyInput) companyInput.value = organization.name;
+    // Populate user profile info and regional settings from auth
+    if (window.hydrateSettingsFromUser) {
+      window.hydrateSettingsFromUser(user);
     }
   }, [user, organization]);
 

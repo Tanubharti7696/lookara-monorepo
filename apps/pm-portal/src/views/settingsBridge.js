@@ -92,52 +92,70 @@ export function initSettingsBridge(containerEl, { showToast, currentUser, curren
   
   // HYDRATE REAL USER PROFILE & REGIONAL SETTINGS
   window.hydrateSettingsFromUser = function(user) {
-    if (!user) return;
-    const fullNameInput = document.getElementById('profileFullName');
-    const emailInput = document.getElementById('profileEmail');
-    const phoneInput = document.getElementById('profilePhone');
-    const avatarEl = document.querySelector('.user-avatar');
+    const applyData = () => {
+      const activeUser = user || currentUser;
+      const fullNameInput = document.getElementById('profileFullName');
+      const emailInput = document.getElementById('profileEmail');
+      const phoneInput = document.getElementById('profilePhone');
+      const avatarEl = document.querySelector('.user-avatar');
 
-    if (fullNameInput) fullNameInput.value = user.fullName || user.full_name || 'Carlos Mendez';
-    if (emailInput) emailInput.value = user.email || 'pm@lookara.com';
-    if (phoneInput && (user.phone || user.phone_number)) phoneInput.value = user.phone || user.phone_number;
+      if (activeUser) {
+        if (fullNameInput) fullNameInput.value = activeUser.fullName || activeUser.full_name || 'Carlos Mendez';
+        if (emailInput) emailInput.value = activeUser.email || 'testing@gmail.com';
+        if (phoneInput) phoneInput.value = activeUser.phone || activeUser.phone_number || '+1 (305) 555-0101';
 
-    if (avatarEl) {
-      if (user.avatarUrl || user.avatar_url) {
-        avatarEl.style.backgroundImage = `url('${user.avatarUrl || user.avatar_url}')`;
-        avatarEl.style.backgroundSize = 'cover';
-        avatarEl.style.backgroundPosition = 'center';
-        avatarEl.textContent = '';
-      } else {
-        const name = user.fullName || user.full_name || 'PM';
-        const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-        avatarEl.textContent = initials || 'PM';
+        if (avatarEl) {
+          if (activeUser.avatarUrl || activeUser.avatar_url) {
+            avatarEl.style.backgroundImage = `url('${activeUser.avatarUrl || activeUser.avatar_url}')`;
+            avatarEl.style.backgroundSize = 'cover';
+            avatarEl.style.backgroundPosition = 'center';
+            avatarEl.textContent = '';
+          } else {
+            const name = activeUser.fullName || activeUser.full_name || 'Carlos Mendez';
+            const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+            avatarEl.textContent = initials || 'CM';
+          }
+        }
       }
-    }
 
-    // Hydrate regional settings from localStorage
-    const savedTimezone = localStorage.getItem('lookara_pref_timezone');
-    const savedLanguage = localStorage.getItem('lookara_pref_language');
-    const savedDateFormat = localStorage.getItem('lookara_pref_dateFormat');
-    const savedTimeFormat = localStorage.getItem('lookara_pref_timeFormat');
+      // Hydrate regional settings from localStorage
+      const savedTimezone = localStorage.getItem('lookara_pref_timezone');
+      const savedLanguage = localStorage.getItem('lookara_pref_language');
+      const savedDateFormat = localStorage.getItem('lookara_pref_dateFormat');
+      const savedTimeFormat = localStorage.getItem('lookara_pref_timeFormat');
 
-    const selects = document.querySelectorAll('#profileSettings select');
-    if (selects.length >= 4) {
-      if (savedTimezone) selects[0].value = savedTimezone;
-      if (savedLanguage) selects[1].value = savedLanguage;
-      if (savedDateFormat) selects[2].value = savedDateFormat;
-      if (savedTimeFormat) selects[3].value = savedTimeFormat;
-      
-      selects[0].onchange = (e) => localStorage.setItem('lookara_pref_timezone', e.target.value);
-      selects[1].onchange = (e) => localStorage.setItem('lookara_pref_language', e.target.value);
-      selects[2].onchange = (e) => localStorage.setItem('lookara_pref_dateFormat', e.target.value);
-      selects[3].onchange = (e) => localStorage.setItem('lookara_pref_timeFormat', e.target.value);
-    }
+      const selects = document.querySelectorAll('#profileSettings select');
+      if (selects.length >= 4) {
+        if (savedTimezone) selects[0].value = savedTimezone;
+        if (savedLanguage) selects[1].value = savedLanguage;
+        if (savedDateFormat) selects[2].value = savedDateFormat;
+        if (savedTimeFormat) selects[3].value = savedTimeFormat;
+        
+        selects[0].onchange = (e) => {
+          localStorage.setItem('lookara_pref_timezone', e.target.value);
+          window.showToast?.('Timezone updated to ' + e.target.value, 'info');
+        };
+        selects[1].onchange = (e) => {
+          localStorage.setItem('lookara_pref_language', e.target.value);
+          window.showToast?.('Language updated to ' + e.target.value, 'info');
+        };
+        selects[2].onchange = (e) => {
+          localStorage.setItem('lookara_pref_dateFormat', e.target.value);
+          window.showToast?.('Date format updated to ' + e.target.value, 'info');
+        };
+        selects[3].onchange = (e) => {
+          localStorage.setItem('lookara_pref_timeFormat', e.target.value);
+          window.showToast?.('Time format updated to ' + e.target.value, 'info');
+        };
+      }
+    };
+
+    applyData();
+    setTimeout(applyData, 50);
+    setTimeout(applyData, 200);
   };
 
-  if (currentUser) {
-    window.hydrateSettingsFromUser(currentUser);
-  }
+  window.hydrateSettingsFromUser(currentUser);
 
   window.saveProfileInfo = async function() {
     const fullName = document.getElementById('profileFullName')?.value?.trim();
