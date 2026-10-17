@@ -9,6 +9,7 @@ import PropertyFilters   from './properties/PropertyFilters';
 import AddPropertyModal  from './properties/AddPropertyModal';
 import BulkImportWizard  from './properties/BulkImportWizard';
 import NotificationRulesDrawer from './properties/NotificationRulesDrawer';
+import { formatCurrency } from '../utils/formatters';
 import './Properties.css';
 import './properties/PropertyOverlays.css';
 
@@ -223,8 +224,9 @@ export default function Properties({ onToast }) {
         <Stat label="Active"         value={stats.active} accent="success" />
         <Stat label="Overdue"        value={stats.overdue} accent={stats.overdue > 0 ? 'crimson' : undefined} />
         <Stat label="Avg Occupancy"  value={`${stats.occupancy}%`} />
-        <Stat label="Revenue MTD"    value={`$${(stats.revenueMtd / 1000).toFixed(1)}k`} accent="gold" />
+        <Stat label="Revenue MTD"    value={formatCurrency(stats.revenueMtd, true)} accent="gold" />
       </div>
+
 
       <div className="props-toolbar">
         <div className="props-toolbar__search">

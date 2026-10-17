@@ -8,6 +8,7 @@ import TaskListView from './tasks/TaskListView';
 import CreateTaskModal from './tasks/CreateTaskModal';
 import TaskDrawer from './tasks/drawer/TaskDrawer';
 import { TASKS as INITIAL_TASKS, ARCHIVE_STATES, COUNTER_MATCHERS, SEARCH_KEYWORDS } from '../data/tasks';
+import { formatDate } from '../utils/formatters';
 import './TasksView.css';
 
 export default function TasksView() {
@@ -28,7 +29,7 @@ export default function TasksView() {
             severity: t.severity ? t.severity.toUpperCase() : 'MEDIUM',
             state: t.status === 'open' ? 'pending' : (t.status === 'completed' ? 'completed' : 'active'),
             group: 'dispatch',
-            due: 'Pending',
+            due: t.due_date ? formatDate(t.due_date) : (t.created_at ? formatDate(t.created_at) : 'Pending'),
             slaStatus: 'ON TRACK',
             vendor: null,
             sourceCls: 'manual',
@@ -38,8 +39,9 @@ export default function TasksView() {
             priorityLabel: (t.severity || 'MEDIUM').toUpperCase(),
             ageDays: 0,
             description: t.description || '',
-            createdAt: t.created_at || new Date().toISOString(),
+            createdAt: t.created_at ? formatDate(t.created_at, true) : formatDate(new Date(), true),
           }));
+
           setTasks(mapped);
         }
       })
