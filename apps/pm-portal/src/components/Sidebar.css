@@ -257,37 +257,48 @@
   z-index: 1000;
 }
 
-/* Invisible hover sensor zone at the left edge of the screen + subtle gold indicator notch */
+/* Sensor zone extending half the sidebar width (130px) and half the screen height (50vh) */
 .app-shell.sidebar-hidden .sidebar::after {
   content: '';
   position: absolute;
   top: 0;
-  right: -24px;
-  width: 24px;
-  height: 100vh;
+  right: -130px;
+  width: 130px;
+  height: 50vh;
   cursor: pointer;
   background: transparent;
+  z-index: 1001;
 }
 
+/* When mouse enters this half width/height zone, slide out the default styled sidebar */
 .app-shell.sidebar-hidden .sidebar:hover,
 .app-shell.sidebar-hidden .sidebar:focus-within {
   transform: translateX(0);
   box-shadow: 12px 0 36px rgba(0, 0, 0, 0.45);
 }
 
-/* Gold edge notch hint on the left edge when collapsed */
+/* While hovered, keep full height coverage so moving anywhere down the sidebar keeps it open */
+.app-shell.sidebar-hidden .sidebar:hover::after,
+.app-shell.sidebar-hidden .sidebar:focus-within::after {
+  right: 0;
+  width: 100%;
+  height: 100vh;
+  pointer-events: none;
+}
+
+/* Sleek gold edge notch hint on the left edge */
 .app-shell.sidebar-hidden .sidebar::before {
   content: '';
   position: absolute;
-  top: 50%;
-  right: -10px;
+  top: 25vh;
+  right: -8px;
   transform: translateY(-50%);
-  width: 10px;
-  height: 64px;
+  width: 8px;
+  height: 70px;
   border-radius: 0 8px 8px 0;
   background: var(--gold);
   opacity: 0.85;
-  box-shadow: 2px 0 10px rgba(212, 175, 55, 0.4);
+  box-shadow: 2px 0 10px rgba(212, 175, 55, 0.45);
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
@@ -295,6 +306,7 @@
   opacity: 0;
   pointer-events: none;
 }
+
 
 .app-shell.sidebar-hidden .app-main {
   margin-left: 0 !important;
