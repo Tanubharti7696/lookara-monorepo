@@ -1218,7 +1218,8 @@ export function initSettingsBridge(containerEl, { showToast, currentUser, curren
 
   window.applyPrefChange = function(prefKey, val) {
     localStorage.setItem(`lookara_pref_${prefKey}`, val);
-    showToast(`Updated ${prefKey}: ${val}`, 'info');
+    window.dispatchEvent(new Event('lookara-pref-change'));
+    window.showToast?.(`Preference updated: ${val}`, 'info');
   };
 
   // 8. REAL-WORLD TEAM MEMBERS TABLE DATA (LOAD & RENDER)
@@ -1268,12 +1269,24 @@ export function initSettingsBridge(containerEl, { showToast, currentUser, curren
   // Trigger team loading
   window.loadAndRenderTeamMembers();
 
-  // Restore saved theme on mount
+  // Restore saved preferences on mount
   const savedTheme = localStorage.getItem('lookara_theme');
   if (savedTheme) {
     window.applyWorkspaceTheme(savedTheme);
     const themeSelect = document.getElementById('prefTheme');
     if (themeSelect) themeSelect.value = savedTheme === 'light' ? 'Light Mode' : 'Dark Mode';
+  }
+
+  const savedSidebar = localStorage.getItem('lookara_pref_sidebar');
+  if (savedSidebar) {
+    const sidebarSelect = document.getElementById('prefSidebar');
+    if (sidebarSelect) sidebarSelect.value = savedSidebar;
+  }
+
+  const savedDashboardDefault = localStorage.getItem('lookara_pref_dashboardDefault');
+  if (savedDashboardDefault) {
+    const dashSelect = document.getElementById('prefDashboardDefault');
+    if (dashSelect) dashSelect.value = savedDashboardDefault;
   }
   
   // ==========================================

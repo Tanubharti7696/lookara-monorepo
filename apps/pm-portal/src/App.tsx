@@ -104,9 +104,45 @@ function Shell() {
     isLoadingUser,
   };
 
+  // Read dynamic preferences
+  const [sidebarMode, setSidebarMode] = useState(() => localStorage.getItem('lookara_pref_sidebar') || 'Expanded');
+  const [defaultRoute, setDefaultRoute] = useState(() => {
+    const pref = (localStorage.getItem('lookara_pref_dashboardDefault') || 'Overview').toLowerCase();
+    if (pref === 'tasks') return '/tasks';
+    if (pref === 'properties') return '/properties';
+    if (pref === 'calendar') return '/calendar';
+    return '/dashboard';
+  });
+
+  useEffect(() => {
+    const handlePrefChange = () => {
+      const mode = localStorage.getItem('lookara_pref_sidebar') || 'Expanded';
+      setSidebarMode(mode);
+
+      const pref = (localStorage.getItem('lookara_pref_dashboardDefault') || 'Overview').toLowerCase();
+      if (pref === 'tasks') setDefaultRoute('/tasks');
+      else if (pref === 'properties') setDefaultRoute('/properties');
+      else if (pref === 'calendar') setDefaultRoute('/calendar');
+      else setDefaultRoute('/dashboard');
+    };
+
+    window.addEventListener('storage', handlePrefChange);
+    window.addEventListener('lookara-pref-change', handlePrefChange);
+    return () => {
+      window.removeEventListener('storage', handlePrefChange);
+      window.removeEventListener('lookara-pref-change', handlePrefChange);
+    };
+  }, []);
+
+  const shellClasses = [
+    'app-shell',
+    sidebarMode.toLowerCase() === 'collapsed' ? 'sidebar-collapsed' : '',
+    sidebarMode.toLowerCase().includes('hide') ? 'sidebar-hidden' : '',
+  ].filter(Boolean).join(' ');
+
   return (
     <ShellContext.Provider value={ctx}>
-      <div className="app-shell">
+      <div className={shellClasses}>
         <Sidebar />
         <button
           className="mobile-sidebar-toggle"
@@ -119,7 +155,7 @@ function Shell() {
         </button>
         <div className="app-main">
           <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/" element={<Navigate to={defaultRoute} replace />} />
             <Route path="/dashboard" element={<DashboardView />} />
             <Route path="/tasks" element={<TasksView />} />
             <Route path="/emergency" element={<EmergencyView />} />

@@ -222,3 +222,42 @@
   }
   .sidebar.open { transform: translateX(0); }
 }
+
+/* ── Collapsed Sidebar (Desktop) ── */
+.app-shell.sidebar-collapsed .sidebar {
+  width: 72px;
+  padding: var(--space-4) var(--space-2);
+}
+.app-shell.sidebar-collapsed .logo {
+  text-align: center;
+  font-size: 16px;
+  margin-bottom: var(--space-6);
+}
+.app-shell.sidebar-collapsed .pm-info,
+.app-shell.sidebar-collapsed .nav-label,
+.app-shell.sidebar-collapsed .nav-badge,
+.app-shell.sidebar-collapsed .nav-section-label,
+.app-shell.sidebar-collapsed .pm-exit-btn span {
+  display: none !important;
+}
+.app-shell.sidebar-collapsed .nav-item {
+  justify-content: center;
+  padding: 10px 0;
+}
+.app-shell.sidebar-collapsed .pm-profile {
+  justify-content: center;
+  padding: 8px 0;
+}
+
+/* ── Hidden / Auto-Hide Sidebar ── */
+.app-shell.sidebar-hidden .sidebar {
+  transform: translateX(-100%);
+  box-shadow: none;
+}
+.app-shell.sidebar-hidden .sidebar:hover {
+  transform: translateX(0);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+}
+.app-shell.sidebar-hidden .app-main {
+  margin-left: 0 !important;
+}
