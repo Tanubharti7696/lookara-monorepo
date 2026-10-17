@@ -250,6 +250,43 @@
 }
 
 /* ── Hidden / Auto-Hide Sidebar ── */
+.sidebar-autohide-sensor {
+  display: none;
+}
+
+.app-shell.sidebar-hidden .sidebar-autohide-sensor {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 130px; /* half of sidebar width (260px / 2) */
+  height: 50vh;  /* half of screen height */
+  z-index: 999;
+  cursor: pointer;
+  background: transparent;
+}
+
+/* Subtle gold indicator tab at the edge */
+.app-shell.sidebar-hidden .sidebar-autohide-sensor::before {
+  content: '';
+  position: absolute;
+  top: 25vh;
+  left: 0;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 70px;
+  border-radius: 0 6px 6px 0;
+  background: var(--gold);
+  opacity: 0.9;
+  box-shadow: 2px 0 10px rgba(212, 175, 55, 0.5);
+  pointer-events: none;
+  transition: opacity 0.2s ease, width 0.2s ease;
+}
+
+.app-shell.sidebar-hidden .sidebar-autohide-sensor:hover::before {
+  width: 10px;
+}
+
 .app-shell.sidebar-hidden .sidebar {
   transform: translateX(-100%);
   box-shadow: none;
@@ -257,56 +294,13 @@
   z-index: 1000;
 }
 
-/* Sensor zone extending half the sidebar width (130px) and half the screen height (50vh) */
-.app-shell.sidebar-hidden .sidebar::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: -130px;
-  width: 130px;
-  height: 50vh;
-  cursor: pointer;
-  background: transparent;
-  z-index: 1001;
-}
-
-/* When mouse enters this half width/height zone, slide out the default styled sidebar */
+/* Reveal when hovering either the trigger zone or the sidebar itself */
+.app-shell.sidebar-hidden .sidebar-autohide-sensor:hover ~ .sidebar,
 .app-shell.sidebar-hidden .sidebar:hover,
 .app-shell.sidebar-hidden .sidebar:focus-within {
   transform: translateX(0);
-  box-shadow: 12px 0 36px rgba(0, 0, 0, 0.45);
+  box-shadow: 12px 0 36px rgba(0, 0, 0, 0.5);
 }
-
-/* While hovered, keep full height coverage so moving anywhere down the sidebar keeps it open */
-.app-shell.sidebar-hidden .sidebar:hover::after,
-.app-shell.sidebar-hidden .sidebar:focus-within::after {
-  right: 0;
-  width: 100%;
-  height: 100vh;
-  pointer-events: none;
-}
-
-/* Sleek gold edge notch hint on the left edge */
-.app-shell.sidebar-hidden .sidebar::before {
-  content: '';
-  position: absolute;
-  top: 25vh;
-  right: -8px;
-  transform: translateY(-50%);
-  width: 8px;
-  height: 70px;
-  border-radius: 0 8px 8px 0;
-  background: var(--gold);
-  opacity: 0.85;
-  box-shadow: 2px 0 10px rgba(212, 175, 55, 0.45);
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.app-shell.sidebar-hidden .sidebar:hover::before {
-  opacity: 0;
-  pointer-events: none;
-}
-
 
 .app-shell.sidebar-hidden .app-main {
   margin-left: 0 !important;

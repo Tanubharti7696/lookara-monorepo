@@ -157,6 +157,12 @@ export default function Sidebar() {
 
   return (
     <>
+      {/* Auto-hide edge trigger strip: 130px wide, 50vh height */}
+      <div
+        className="sidebar-autohide-sensor"
+        aria-hidden="true"
+      />
+
       <div
         className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`}
         onClick={closeSidebar}
@@ -164,6 +170,7 @@ export default function Sidebar() {
       />
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`} aria-label="Primary navigation">
+
         <div className="logo">LOOKARA</div>
 
         <div className="pm-profile">
