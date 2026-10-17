@@ -168,6 +168,24 @@ export default function Properties({ onToast }) {
     return true;
   }), [propertiesList, search, filters]);
 
+  const [itemsPerPage, setItemsPerPage] = useState(() => {
+    return parseInt(localStorage.getItem('lookara_pref_itemsPerPage') || '50', 10);
+  });
+
+  useEffect(() => {
+    const handlePref = () => {
+      const perPage = parseInt(localStorage.getItem('lookara_pref_itemsPerPage') || '50', 10);
+      setItemsPerPage(perPage);
+    };
+    window.addEventListener('lookara-pref-change', handlePref);
+    return () => window.removeEventListener('lookara-pref-change', handlePref);
+  }, []);
+
+  const displayedProperties = useMemo(() => {
+    return filtered.slice(0, itemsPerPage);
+  }, [filtered, itemsPerPage]);
+
+
   const stats = useMemo(() => ({
     total:      propertiesList.length,
     active:     propertiesList.filter(p => p.status === 'active').length,
@@ -252,7 +270,7 @@ export default function Properties({ onToast }) {
           </div>
         ) : view === 'grid' && (
           <div className="props-grid">
-            {filtered.map(p => <PropertyCard key={p.id} property={p} onClick={() => openDetail(p.id)} />)}
+            {displayedProperties.map(p => <PropertyCard key={p.id} property={p} onClick={() => openDetail(p.id)} />)}
           </div>
         )}
 
@@ -267,7 +285,7 @@ export default function Properties({ onToast }) {
               <div>Revenue MTD</div>
               <div>Open WOs</div>
             </div>
-            {filtered.map(p => (
+            {displayedProperties.map(p => (
               <PropertyRow key={p.id} property={p} onClick={() => openDetail(p.id)} />
             ))}
           </div>

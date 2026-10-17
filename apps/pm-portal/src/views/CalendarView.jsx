@@ -12,7 +12,10 @@ import { WEEK_START } from '../data/calendar';
 import './CalendarView.css';
 
 export default function CalendarView() {
-  const [view, setView]           = useState('week');
+  const [view, setView]           = useState(() => {
+    const pref = (localStorage.getItem('lookara_pref_calendarView') || 'week').toLowerCase();
+    return ['day', 'week', 'month', 'agenda'].includes(pref) ? pref : 'week';
+  });
   const [search, setSearch]       = useState('');
   const [dayKey, setDayKey]       = useState('Jan-16');
   const [turnoverKey, setTurnover] = useState(null);
@@ -21,8 +24,20 @@ export default function CalendarView() {
   const [loading, setLoading]     = useState(true);
 
   useEffect(() => {
+    const handlePref = () => {
+      const pref = (localStorage.getItem('lookara_pref_calendarView') || 'week').toLowerCase();
+      if (['day', 'week', 'month', 'agenda'].includes(pref)) {
+        setView(pref);
+      }
+    };
+    window.addEventListener('lookara-pref-change', handlePref);
+    return () => window.removeEventListener('lookara-pref-change', handlePref);
+  }, []);
+
+  useEffect(() => {
     const startStr = WEEK_START.toISOString().split('T')[0];
     const end = new Date(WEEK_START);
+
     end.setDate(WEEK_START.getDate() + 6);
     const endStr = end.toISOString().split('T')[0];
 

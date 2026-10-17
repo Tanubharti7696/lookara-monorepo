@@ -18,7 +18,8 @@ export default function CreateTaskModal({ open, mode = 'task', onClose, onCreate
   // Fetch properties for the dropdown
   useEffect(() => {
     if (open) {
-      setForm({ severity: mode === 'incident' ? 'critical' : 'medium' });
+      const preferredPriority = (localStorage.getItem('lookara_pref_taskPriority') || 'medium').toLowerCase();
+      setForm({ severity: mode === 'incident' ? 'critical' : preferredPriority });
       apiFetch(`/api/v1/properties`)
         .then(res => res.json())
         .then(data => {

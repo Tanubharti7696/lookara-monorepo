@@ -1269,7 +1269,17 @@ export function initSettingsBridge(containerEl, { showToast, currentUser, curren
   // Trigger team loading
   window.loadAndRenderTeamMembers();
 
-  // Restore saved preferences on mount
+  // Privacy Toggles handler
+  window.togglePrivacySetting = function(key, el) {
+    if (!el) return;
+    el.classList.toggle('active');
+    const isActive = el.classList.contains('active');
+    localStorage.setItem(`lookara_privacy_${key}`, isActive ? 'true' : 'false');
+    window.dispatchEvent(new Event('lookara-pref-change'));
+    window.showToast?.(`${key === 'analytics' ? 'Analytics sharing' : 'Activity tracking'} ${isActive ? 'enabled' : 'disabled'}`, 'info');
+  };
+
+  // Restore saved preferences & privacy toggles on mount
   const savedTheme = localStorage.getItem('lookara_theme');
   if (savedTheme) {
     window.applyWorkspaceTheme(savedTheme);
@@ -1288,6 +1298,48 @@ export function initSettingsBridge(containerEl, { showToast, currentUser, curren
     const dashSelect = document.getElementById('prefDashboardDefault');
     if (dashSelect) dashSelect.value = savedDashboardDefault;
   }
+
+  const savedPriority = localStorage.getItem('lookara_pref_taskPriority');
+  if (savedPriority) {
+    const el = document.getElementById('prefTaskPriority');
+    if (el) el.value = savedPriority;
+  }
+
+  const savedCalView = localStorage.getItem('lookara_pref_calendarView');
+  if (savedCalView) {
+    const el = document.getElementById('prefCalendarView');
+    if (el) el.value = savedCalView;
+  }
+
+  const savedItemsPerPage = localStorage.getItem('lookara_pref_itemsPerPage');
+  if (savedItemsPerPage) {
+    const el = document.getElementById('prefItemsPerPage');
+    if (el) el.value = savedItemsPerPage;
+  }
+
+  // Hydrate Privacy Toggles
+  const savedAnalytics = localStorage.getItem('lookara_privacy_analytics');
+  if (savedAnalytics !== null) {
+    const el = document.getElementById('toggleAnalytics');
+    if (el) el.classList.toggle('active', savedAnalytics === 'true');
+  }
+
+  const savedActivityLog = localStorage.getItem('lookara_privacy_activityLog');
+  if (savedActivityLog !== null) {
+    const el = document.getElementById('toggleActivityLog');
+    if (el) el.classList.toggle('active', savedActivityLog === 'true');
+  }
+
+  // Hydrate other preference selects
+  ['language', 'timezone', 'dateFormat', 'timeFormat', 'currency', 'firstDay', 'density'].forEach(k => {
+    const saved = localStorage.getItem(`lookara_pref_${k}`);
+    if (saved) {
+      const cap = k.charAt(0).toUpperCase() + k.slice(1);
+      const el = document.getElementById(`pref${cap}`);
+      if (el) el.value = saved;
+    }
+  });
+
   
   // ==========================================
   // REAL FUNCTIONALITY ENGINE: SECURITY, REPORTS, SLA & COMPLIANCE

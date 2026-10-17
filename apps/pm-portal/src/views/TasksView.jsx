@@ -118,6 +118,24 @@ export default function TasksView() {
     });
   }, [baseFiltered, counter, sourceFilter, search]);
 
+  const [itemsPerPage, setItemsPerPage] = useState(() => {
+    return parseInt(localStorage.getItem('lookara_pref_itemsPerPage') || '50', 10);
+  });
+
+  useEffect(() => {
+    const handlePref = () => {
+      const perPage = parseInt(localStorage.getItem('lookara_pref_itemsPerPage') || '50', 10);
+      setItemsPerPage(perPage);
+    };
+    window.addEventListener('lookara-pref-change', handlePref);
+    return () => window.removeEventListener('lookara-pref-change', handlePref);
+  }, []);
+
+  const paginatedTasks = useMemo(() => {
+    return filtered.slice(0, itemsPerPage);
+  }, [filtered, itemsPerPage]);
+
+
   const handleCreate = (payload) => {
     const sev = payload.severity?.toUpperCase() || (payload.mode === 'incident' ? 'CRITICAL' : 'MEDIUM');
     const dbPayload = {
@@ -253,7 +271,7 @@ export default function TasksView() {
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
         ) : (
-          <TaskListView tasks={filtered} onOpenTask={setOpenTaskId} />
+          <TaskListView tasks={paginatedTasks} onOpenTask={setOpenTaskId} />
         )}
       </div>
 
