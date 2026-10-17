@@ -4,6 +4,10 @@ import { apiFetch } from '../utils/api';
 
 export function initSettingsBridge(containerEl, { showToast, currentUser, currentOrg }) {
   if (!containerEl) return;
+  if (showToast) {
+    window.showToast = showToast;
+  }
+
 
   // 1. SAVE PROFILE INFORMATION
   
