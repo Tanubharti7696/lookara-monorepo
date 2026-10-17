@@ -253,11 +253,49 @@
 .app-shell.sidebar-hidden .sidebar {
   transform: translateX(-100%);
   box-shadow: none;
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s ease;
+  z-index: 1000;
 }
-.app-shell.sidebar-hidden .sidebar:hover {
+
+/* Invisible hover sensor zone at the left edge of the screen + subtle gold indicator notch */
+.app-shell.sidebar-hidden .sidebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -24px;
+  width: 24px;
+  height: 100vh;
+  cursor: pointer;
+  background: transparent;
+}
+
+.app-shell.sidebar-hidden .sidebar:hover,
+.app-shell.sidebar-hidden .sidebar:focus-within {
   transform: translateX(0);
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+  box-shadow: 12px 0 36px rgba(0, 0, 0, 0.45);
 }
+
+/* Gold edge notch hint on the left edge when collapsed */
+.app-shell.sidebar-hidden .sidebar::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -10px;
+  transform: translateY(-50%);
+  width: 10px;
+  height: 64px;
+  border-radius: 0 8px 8px 0;
+  background: var(--gold);
+  opacity: 0.85;
+  box-shadow: 2px 0 10px rgba(212, 175, 55, 0.4);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.app-shell.sidebar-hidden .sidebar:hover::before {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .app-shell.sidebar-hidden .app-main {
   margin-left: 0 !important;
 }
