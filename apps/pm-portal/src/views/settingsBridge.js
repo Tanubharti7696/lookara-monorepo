@@ -172,14 +172,28 @@ export function initSettingsBridge(containerEl, { showToast, currentUser, curren
       if (!res.ok) {
         throw new Error(data.message || data.error || 'Failed to update profile');
       }
+
+      // If backend issued a new token with updated email, store it immediately
+      const token = data.data?.accessToken || data.accessToken;
+      if (token) {
+        localStorage.setItem('lookara_token', token);
+      }
+
+      const updatedUser = data.data?.user || data.user || { fullName, email, phone, jobTitle };
       localStorage.setItem('lookara_user_profile', JSON.stringify({ fullName, email, phone, jobTitle }));
+      localStorage.setItem('lookara_user', JSON.stringify(updatedUser));
+      
       window.showToast('Profile and login credentials saved successfully', 'success');
       
-      // Update displayed name & email in the header/avatar
+      // Update displayed name & initials
       const avatarEl = document.querySelector('.user-avatar');
       if (avatarEl && fullName) {
         const initials = fullName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
         avatarEl.textContent = initials;
+      }
+
+      if (window.hydrateSettingsFromUser) {
+        window.hydrateSettingsFromUser(updatedUser);
       }
     } catch (e) {
       window.showToast(e.message || 'Failed to update profile', 'danger');

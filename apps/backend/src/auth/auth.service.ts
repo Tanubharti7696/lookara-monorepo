@@ -481,7 +481,38 @@ export class AuthService {
       );
     }
 
-    return { success: true, message: 'Profile updated successfully' };
+    // Resolve updated context and return fresh tokens
+    const userContext = await this.resolveUserContext(userId);
+    const activeOrgId = userContext.memberships[0]?.organizationId;
+    const activeRole = userContext.memberships[0]?.role;
+
+    const tokenPayload: Omit<JwtPayload, 'iat' | 'exp'> = {
+      sub: userContext.id,
+      email: userContext.email,
+      fullName: userContext.fullName,
+      activePortal: userContext.allowedPortals[0] || 'pm',
+      activeOrganizationId: activeOrgId,
+      activeRole,
+      isOwner: userContext.isOwner,
+      isVendor: userContext.isVendor,
+      isAdmin: userContext.isAdmin,
+      allowedPortals: userContext.allowedPortals,
+    };
+
+    const newAccessToken = signAccessToken(tokenPayload, this.jwtSecret);
+
+    return {
+      success: true,
+      message: 'Profile updated successfully',
+      user: {
+        id: userContext.id,
+        email: userContext.email,
+        fullName: userContext.fullName,
+        phone: userContext.phone,
+        avatarUrl: userContext.avatarUrl,
+      },
+      accessToken: newAccessToken,
+    };
   }
 
 }
