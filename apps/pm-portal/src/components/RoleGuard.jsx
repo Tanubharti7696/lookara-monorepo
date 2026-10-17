@@ -2,11 +2,10 @@ import { Navigate } from 'react-router-dom';
 import { useRBAC } from '../hooks/useRBAC';
 
 export function RoleGuard({ children, minRole = 'manager', fallback = '/dashboard' }) {
-  const { hasMinRole, role } = useRBAC();
+  const { hasMinRole, isLoading } = useRBAC();
 
-  if (!role) {
-    // Role not loaded yet, or no role at all, you might want a loading spinner here
-    // But since AuthGuard runs first, we assume shell user is loaded
+  if (isLoading) {
+    return null; // wait until user session is resolved
   }
 
   if (!hasMinRole(minRole)) {
