@@ -1,7 +1,9 @@
-// src/components/Sidebar.jsx
+import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useShell } from '../context/ShellContext';
+import { t } from '../utils/i18n';
 import './Sidebar.css';
+
 
 /* ── SVG icons (Lucide-style, copied from Dashboard HTML) ── */
 const IconDashboard = () => (
@@ -131,6 +133,13 @@ const NAV = [
 
 export default function Sidebar() {
   const { sidebarOpen, closeSidebar, user, isLoadingUser } = useShell();
+  const [, setLangTick] = useState(0);
+
+  useEffect(() => {
+    const onPref = () => setLangTick(t => t + 1);
+    window.addEventListener('lookara-pref-change', onPref);
+    return () => window.removeEventListener('lookara-pref-change', onPref);
+  }, []);
 
   const handleExit = () => {
     localStorage.removeItem('lookara_token');
@@ -157,7 +166,7 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Auto-hide edge trigger strip: 130px wide, 50vh height */}
+      {/* Auto-hide edge trigger strip */}
       <div
         className="sidebar-autohide-sensor"
         aria-hidden="true"
@@ -170,7 +179,6 @@ export default function Sidebar() {
       />
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`} aria-label="Primary navigation">
-
         <div className="logo">LOOKARA</div>
 
         <div className="pm-profile">
@@ -184,7 +192,7 @@ export default function Sidebar() {
         <nav>
           {NAV.map(group => (
             <div className="nav-section" key={group.section}>
-              <div className="nav-section-title">{group.section}</div>
+              <div className="nav-section-title">{t(group.section)}</div>
               {group.items.map(item => (
                 <NavLink
                   key={item.to}
@@ -192,7 +200,7 @@ export default function Sidebar() {
                   className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
                 >
                   <span className="nav-icon">{item.icon}</span>
-                  <span className="nav-label">{item.label}</span>
+                  <span className="nav-label">{t(item.label)}</span>
                   {item.badge != null && (
                     <span className={`nav-badge ${item.badgeTone || ''}`}>
                       {item.badge}
@@ -209,15 +217,15 @@ export default function Sidebar() {
             type="button"
             className="pm-exit-btn"
             onClick={handleExit}
-            title="Exit Portal / Sign Out"
-            aria-label="Exit Portal"
+            title={t('Exit Portal')}
+            aria-label={t('Exit Portal')}
           >
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               <polyline points="16 17 21 12 16 7" />
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
-            <span>Exit Portal</span>
+            <span>{t('Exit Portal')}</span>
           </button>
         </div>
       </aside>

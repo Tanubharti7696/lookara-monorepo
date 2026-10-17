@@ -1,5 +1,8 @@
 import { useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { t } from '../utils/i18n';
 import './TopBar.css';
+
 
 const TITLES = {
   '/dashboard':  { title: 'Dashboard',  sub: 'Portfolio overview' },
@@ -16,6 +19,14 @@ const TITLES = {
 
 export default function TopBar({ onMenuClick }) {
   const { pathname } = useLocation();
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const onPref = () => setTick(t => t + 1);
+    window.addEventListener('lookara-pref-change', onPref);
+    return () => window.removeEventListener('lookara-pref-change', onPref);
+  }, []);
+
   const meta = TITLES[pathname] || { title: 'Lookara', sub: '' };
 
   return (
@@ -29,7 +40,7 @@ export default function TopBar({ onMenuClick }) {
           ☰
         </button>
         <div className="lk-topbar-titles">
-          <div className="lk-topbar-title">{meta.title}</div>
+          <div className="lk-topbar-title">{t(meta.title)}</div>
           {meta.sub && <div className="lk-topbar-sub">{meta.sub}</div>}
         </div>
       </div>
