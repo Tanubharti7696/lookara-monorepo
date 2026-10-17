@@ -8,6 +8,7 @@ import {
 import { query } from '@lookara/database';
 import {
   verifyPassword,
+  hashPassword,
   signAccessToken,
   signRefreshToken,
   verifyRefreshToken,
@@ -368,4 +369,96 @@ export class AuthService {
       allowedPortals,
     };
   }
+
+  /**
+   * Change user password securely
+   */
+  async changePassword(userId: string, currentPassword?: string, newPassword?: string) {
+    if (!newPassword || newPassword.length < 8) {
+      throw new UnauthorizedException('New password must be at least 8 characters long');
+    }
+
+    const userRes = await query(
+      `SELECT id, password_hash, email FROM users WHERE id = $1`,
+      [userId],
+    );
+
+    if (userRes.rows.length === 0) {
+      throw new NotFoundException('User not found');
+    }
+
+    const user = userRes.rows[0];
+
+    // If existing password exists, verify current password
+    if (user.password_hash && currentPassword) {
+      const valid = await verifyPassword(currentPassword, user.password_hash);
+      if (!valid) {
+        throw new UnauthorizedException('Current password does not match');
+      }
+    }
+
+    const newHash = await hashPassword(newPassword);
+
+    await query(
+      `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+      [newHash, userId],
+    );
+
+    // Audit log
+    await query(
+      `INSERT INTO audit_events (event_code, actor_type, actor_user_id, target_type, target_id, category, event_type, summary)
+       VALUES ($1, 'user', $2, 'user', $3, 'security', 'auth.password_changed', 'User password changed successfully')`,
+      [`PWD-${Date.now()}`, userId, userId],
+    );
+
+    return { success: true, message: 'Password changed successfully' };
+  }
+
+  /**
+   * Update user profile information (name, email, phone, avatar)
+   */
+  async updateProfile(userId: string, data: { name?: string; email?: string; phone?: string; avatarUrl?: string }) {
+    const userRes = await query(`SELECT id, email FROM users WHERE id = $1`, [userId]);
+    if (userRes.rows.length === 0) throw new NotFoundException('User not found');
+
+    const updates: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (data.name !== undefined) {
+      updates.push(`full_name = $${idx++}`);
+      values.push(data.name.trim());
+    }
+    if (data.email !== undefined && data.email.trim()) {
+      // Check for duplicate email
+      const checkRes = await query(
+        `SELECT id FROM users WHERE lower(email) = lower($1) AND id != $2`,
+        [data.email.trim(), userId],
+      );
+      if (checkRes.rows.length > 0) {
+        throw new UnauthorizedException('Email is already in use by another account');
+      }
+      updates.push(`email = $${idx++}`);
+      values.push(data.email.trim());
+    }
+    if (data.phone !== undefined) {
+      updates.push(`phone = $${idx++}`);
+      values.push(data.phone.trim());
+    }
+    if (data.avatarUrl !== undefined) {
+      updates.push(`avatar_url = $${idx++}`);
+      values.push(data.avatarUrl);
+    }
+
+    if (updates.length > 0) {
+      values.push(userId);
+      await query(
+        `UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${idx}`,
+        values,
+      );
+    }
+
+    return { success: true, message: 'Profile updated successfully' };
+  }
+
 }

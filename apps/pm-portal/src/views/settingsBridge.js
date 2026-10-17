@@ -6,6 +6,85 @@ export function initSettingsBridge(containerEl, { showToast, currentUser, curren
   if (!containerEl) return;
 
   // 1. SAVE PROFILE INFORMATION
+  
+  // AVATAR UPLOAD & REMOVE ENGINE
+  window.handleAvatarUpload = function() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64 = event.target?.result;
+        const avatarEl = document.querySelector('.user-avatar');
+        if (avatarEl) {
+          avatarEl.style.backgroundImage = `url('${base64}')`;
+          avatarEl.style.backgroundSize = 'cover';
+          avatarEl.style.backgroundPosition = 'center';
+          avatarEl.textContent = '';
+        }
+        localStorage.setItem('lookara_user_avatar', base64);
+        try {
+          await apiFetch('/api/v1/auth/update-profile', {
+            method: 'POST',
+            body: JSON.stringify({ avatarUrl: base64 }),
+          });
+          showToast('Profile picture uploaded successfully', 'success');
+        } catch(err) {
+          showToast('Profile picture saved locally', 'success');
+        }
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  };
+
+  window.handleAvatarRemove = async function() {
+    const avatarEl = document.querySelector('.user-avatar');
+    if (avatarEl) {
+      avatarEl.style.backgroundImage = 'none';
+      const name = document.getElementById('profileFullName')?.value || 'SC';
+      const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || 'SC';
+      avatarEl.textContent = initials;
+    }
+    localStorage.removeItem('lookara_user_avatar');
+    try {
+      await apiFetch('/api/v1/auth/update-profile', {
+        method: 'POST',
+        body: JSON.stringify({ avatarUrl: null }),
+      });
+      showToast('Profile picture removed', 'info');
+    } catch(err) {
+      showToast('Profile picture removed', 'info');
+    }
+  };
+
+  // Attach upload/remove handlers to prototype avatar buttons
+  setTimeout(() => {
+    const avatarBox = document.querySelector('.user-avatar')?.parentElement;
+    if (avatarBox) {
+      const buttons = avatarBox.querySelectorAll('button');
+      if (buttons.length >= 2) {
+        buttons[0].onclick = () => window.handleAvatarUpload();
+        buttons[1].onclick = () => window.handleAvatarRemove();
+      }
+    }
+    // Restore saved avatar if exists
+    const savedAvatar = localStorage.getItem('lookara_user_avatar');
+    if (savedAvatar) {
+      const avatarEl = document.querySelector('.user-avatar');
+      if (avatarEl) {
+        avatarEl.style.backgroundImage = `url('${savedAvatar}')`;
+        avatarEl.style.backgroundSize = 'cover';
+        avatarEl.style.backgroundPosition = 'center';
+        avatarEl.textContent = '';
+      }
+    }
+  }, 100);
+
   window.saveProfileInfo = async function() {
     const fullName = document.getElementById('profileFullName')?.value?.trim();
     const email = document.getElementById('profileEmail')?.value?.trim();
@@ -13,15 +92,19 @@ export function initSettingsBridge(containerEl, { showToast, currentUser, curren
     const jobTitle = document.getElementById('profileJobTitle')?.value?.trim();
 
     try {
-      await apiFetch('/api/v1/users/me', {
-        method: 'PATCH',
-        body: JSON.stringify({ name: fullName, email, phone, job_title: jobTitle }),
+      const res = await apiFetch('/api/v1/auth/update-profile', {
+        method: 'POST',
+        body: JSON.stringify({ name: fullName, email, phone }),
       });
-      showToast('Profile information saved successfully', 'success');
-    } catch (e) {
-      // Fallback local persistence if offline/mock
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Failed to update profile');
+      }
       localStorage.setItem('lookara_user_profile', JSON.stringify({ fullName, email, phone, jobTitle }));
-      showToast('Profile details updated', 'success');
+      showToast('Profile and login credentials saved successfully', 'success');
+    } catch (e) {
+      localStorage.setItem('lookara_user_profile', JSON.stringify({ fullName, email, phone, jobTitle }));
+      showToast(e.message || 'Profile details updated', 'info');
     }
   };
 

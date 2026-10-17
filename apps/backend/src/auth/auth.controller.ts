@@ -52,4 +52,23 @@ export class AuthController {
   async logout(@CurrentUser() user: JwtPayload) {
     return this.authService.logout(user.sub);
   }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  async changePassword(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { currentPassword?: string; newPassword?: string },
+  ) {
+    return this.authService.changePassword(user.sub, body.currentPassword, body.newPassword);
+  }
+
+  @Post('update-profile')
+  @HttpCode(HttpStatus.OK)
+  async updateProfile(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { name?: string; email?: string; phone?: string; avatarUrl?: string },
+  ) {
+    return this.authService.updateProfile(user.sub, body);
+  }
+
 }
