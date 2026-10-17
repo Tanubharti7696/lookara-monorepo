@@ -181,9 +181,10 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  max-width: 1440px;
   width: 100%;
+  box-sizing: border-box;
 }
+
 
 .dashboard-section { display: flex; flex-direction: column; }
 
