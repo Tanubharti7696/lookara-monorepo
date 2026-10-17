@@ -89,6 +89,56 @@ export function initSettingsBridge(containerEl, { showToast, currentUser, curren
     }
   }, 100);
 
+  
+  // HYDRATE REAL USER PROFILE & REGIONAL SETTINGS
+  window.hydrateSettingsFromUser = function(user) {
+    if (!user) return;
+    const fullNameInput = document.getElementById('profileFullName');
+    const emailInput = document.getElementById('profileEmail');
+    const phoneInput = document.getElementById('profilePhone');
+    const avatarEl = document.querySelector('.user-avatar');
+
+    if (fullNameInput) fullNameInput.value = user.fullName || user.full_name || 'Carlos Mendez';
+    if (emailInput) emailInput.value = user.email || 'pm@lookara.com';
+    if (phoneInput && (user.phone || user.phone_number)) phoneInput.value = user.phone || user.phone_number;
+
+    if (avatarEl) {
+      if (user.avatarUrl || user.avatar_url) {
+        avatarEl.style.backgroundImage = `url('${user.avatarUrl || user.avatar_url}')`;
+        avatarEl.style.backgroundSize = 'cover';
+        avatarEl.style.backgroundPosition = 'center';
+        avatarEl.textContent = '';
+      } else {
+        const name = user.fullName || user.full_name || 'PM';
+        const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+        avatarEl.textContent = initials || 'PM';
+      }
+    }
+
+    // Hydrate regional settings from localStorage
+    const savedTimezone = localStorage.getItem('lookara_pref_timezone');
+    const savedLanguage = localStorage.getItem('lookara_pref_language');
+    const savedDateFormat = localStorage.getItem('lookara_pref_dateFormat');
+    const savedTimeFormat = localStorage.getItem('lookara_pref_timeFormat');
+
+    const selects = document.querySelectorAll('#profileSettings select');
+    if (selects.length >= 4) {
+      if (savedTimezone) selects[0].value = savedTimezone;
+      if (savedLanguage) selects[1].value = savedLanguage;
+      if (savedDateFormat) selects[2].value = savedDateFormat;
+      if (savedTimeFormat) selects[3].value = savedTimeFormat;
+      
+      selects[0].onchange = (e) => localStorage.setItem('lookara_pref_timezone', e.target.value);
+      selects[1].onchange = (e) => localStorage.setItem('lookara_pref_language', e.target.value);
+      selects[2].onchange = (e) => localStorage.setItem('lookara_pref_dateFormat', e.target.value);
+      selects[3].onchange = (e) => localStorage.setItem('lookara_pref_timeFormat', e.target.value);
+    }
+  };
+
+  if (currentUser) {
+    window.hydrateSettingsFromUser(currentUser);
+  }
+
   window.saveProfileInfo = async function() {
     const fullName = document.getElementById('profileFullName')?.value?.trim();
     const email = document.getElementById('profileEmail')?.value?.trim();
@@ -119,32 +169,35 @@ export function initSettingsBridge(containerEl, { showToast, currentUser, curren
     const conf = document.getElementById('pwConfirm')?.value;
 
     if (!cur || !nw) {
-      showToast('Please enter your current and new password', 'warning');
+      window.showToast('Please enter both your current and new password', 'warning');
       return;
     }
     if (nw.length < 8) {
-      showToast('New password must be at least 8 characters long', 'warning');
+      window.showToast('New password must be at least 8 characters long', 'warning');
       return;
     }
     if (nw !== conf) {
-      showToast('New passwords do not match', 'danger');
+      window.showToast('New passwords do not match', 'danger');
       return;
     }
 
     try {
-      await apiFetch('/api/v1/auth/change-password', {
+      const res = await apiFetch('/api/v1/auth/change-password', {
         method: 'POST',
         body: JSON.stringify({ currentPassword: cur, newPassword: nw }),
       });
-      showToast('Password updated successfully', 'success');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data.errors?.[0]?.message || data.message || 'Current password does not match';
+        window.showToast(msg, 'danger');
+        return;
+      }
+      window.showToast('Password updated successfully in database', 'success');
       if (document.getElementById('pwCurrent')) document.getElementById('pwCurrent').value = '';
       if (document.getElementById('pwNew')) document.getElementById('pwNew').value = '';
       if (document.getElementById('pwConfirm')) document.getElementById('pwConfirm').value = '';
     } catch (err) {
-      showToast(err.message || 'Password updated', 'success');
-      if (document.getElementById('pwCurrent')) document.getElementById('pwCurrent').value = '';
-      if (document.getElementById('pwNew')) document.getElementById('pwNew').value = '';
-      if (document.getElementById('pwConfirm')) document.getElementById('pwConfirm').value = '';
+      window.showToast(err.message || 'Failed to update password', 'danger');
     }
   };
 

@@ -1,12 +1,15 @@
 import React, { useEffect, useRef } from 'react';
+import { useShell } from '../context/ShellContext';
 // import { useAuth } from '../auth';
 import { SETTINGS_HTML } from './settingsHtmlData';
 import { initSettingsBridge } from './settingsBridge';
 import './settings.css';
 
+
 export default function SettingsView({ onToast }) {
   const containerRef = useRef(null);
-  const user = null; const organization = null;
+  const { user } = useShell();
+  const organization = user?.memberships?.[0] ? { id: user.memberships[0].organizationId, name: user.memberships[0].organizationName } : null;
 
   const handleToast = (msg, type) => {
     if (onToast) onToast(msg, type);
