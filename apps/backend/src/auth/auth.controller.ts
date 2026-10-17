@@ -71,4 +71,19 @@ export class AuthController {
     return this.authService.updateProfile(user.sub, body);
   }
 
+  @Post('request-delete-code')
+  @HttpCode(HttpStatus.OK)
+  async requestDeleteCode(@CurrentUser() user: JwtPayload) {
+    return this.authService.requestDeleteAccountCode(user.sub);
+  }
+
+  @Post('verify-delete-account')
+  @HttpCode(HttpStatus.OK)
+  async verifyDeleteAccount(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { code: string },
+  ) {
+    return this.authService.verifyAndDeleteAccount(user.sub, body.code);
+  }
+
 }
