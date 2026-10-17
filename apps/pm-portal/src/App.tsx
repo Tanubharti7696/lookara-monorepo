@@ -33,6 +33,17 @@ type ToastState = {
 } | null;
 
 export default function App() {
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('lookara_theme');
+    if (savedTheme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+      document.body.classList.add('light-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      document.body.classList.remove('light-theme');
+    }
+  }, []);
+
   return (
     <BrowserRouter>
       <AuthGuard>

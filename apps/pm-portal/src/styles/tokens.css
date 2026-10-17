@@ -77,3 +77,217 @@
   --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'DM Mono', 'SF Mono', ui-monospace, monospace;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Lookara Design System — Managed Light Theme
+   Harmonious luxury light palette matching Lookara Gold branding
+   ───────────────────────────────────────────────────────────── */
+:root[data-theme="light"],
+body.light-theme {
+  /* Core brand stays authoritative and readable on light */
+  --gold:        #C59B27;
+  --gold-hover:  #B2891E;
+  --gold-active: #967216;
+  --gold-dim:    rgba(197, 155, 39, 0.15);
+
+  /* Clean, crisp light surfaces */
+  --bg-0:      #F8FAFC;
+  --bg-1:      #FFFFFF;
+  --bg:        #F8FAFC;
+  --bg-2:      #FFFFFF;
+  --panel:     #FFFFFF;
+  --panel-2:   #F1F5F9;
+  --graphite:  #F8FAFC;
+  --container: #FFFFFF;
+  --card-bg:   #FFFFFF;
+  --card-hover:#F1F5F9;
+
+  /* Borders & Dividers */
+  --line:        #E2E8F0;
+  --divider:     #E2E8F0;
+  --border:      #CBD5E1;
+  --border-soft: rgba(0, 0, 0, 0.07);
+
+  /* High contrast, legible typography */
+  --text:       #0F172A;
+  --text-2:     #334155;
+  --text-muted: #64748B;
+  --slate:      #64748B;
+
+  /* Legacy aliases for HTML-derived views */
+  --charcoal:         #FFFFFF;
+  --charcoal-light:   #F8FAFC;
+  --charcoal-lighter: #F1F5F9;
+  --white:            #0F172A;
+  --white-muted:      #64748B;
+
+  /* Signals optimized for light backgrounds */
+  --success: #16A34A;
+  --warning: #D97706;
+  --danger:  #DC2626;
+  --crimson: #DC2626;
+  --amber:   #D97706;
+  --info:    #2563EB;
+  --blue:    #3B82F6;
+  --purple:  #8B5CF6;
+
+  --success-dim: rgba(22, 163, 74, 0.12);
+  --warning-dim: rgba(217, 119, 6, 0.12);
+  --danger-dim:  rgba(220, 38, 38, 0.12);
+  --info-dim:    rgba(37, 99, 235, 0.12);
+
+  /* Light elevation shadows */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.08), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, 0.08), 0 4px 6px -4px rgba(15, 23, 42, 0.03);
+}
+
+/* Light theme card and input adjustments */
+body.light-theme .card,
+:root[data-theme="light"] .card,
+body.light-theme .settings-card,
+:root[data-theme="light"] .settings-card {
+  background: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  color: #0F172A !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+body.light-theme input,
+:root[data-theme="light"] input,
+body.light-theme select,
+:root[data-theme="light"] select,
+body.light-theme textarea,
+:root[data-theme="light"] textarea {
+  background: #FFFFFF !important;
+  border-color: #CBD5E1 !important;
+  color: #0F172A !important;
+}
+
+body.light-theme input:focus,
+:root[data-theme="light"] input:focus,
+body.light-theme select:focus,
+:root[data-theme="light"] select:focus {
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 0 2px var(--gold-dim) !important;
+}
+
+body.light-theme .settings-sidebar,
+:root[data-theme="light"] .settings-sidebar,
+body.light-theme .sidebar,
+:root[data-theme="light"] .sidebar {
+  background: #F8FAFC !important;
+  border-right-color: #E2E8F0 !important;
+}
+
+body.light-theme .settings-nav-item,
+:root[data-theme="light"] .settings-nav-item {
+  color: #475569 !important;
+}
+
+body.light-theme .settings-nav-item:hover,
+:root[data-theme="light"] .settings-nav-item:hover {
+  background: #EDF2F7 !important;
+  color: #0F172A !important;
+}
+
+body.light-theme .settings-nav-item.active,
+:root[data-theme="light"] .settings-nav-item.active {
+  background: #FFFFFF !important;
+  color: var(--gold) !important;
+  border-left-color: var(--gold) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+body.light-theme .btn-outline,
+:root[data-theme="light"] .btn-outline {
+  border-color: #CBD5E1 !important;
+  color: #334155 !important;
+  background: #FFFFFF !important;
+}
+
+body.light-theme .btn-outline:hover,
+:root[data-theme="light"] .btn-outline:hover {
+  background: #F1F5F9 !important;
+  color: #0F172A !important;
+}
+
+/* Light Mode: Tables & Borders */
+body.light-theme table,
+:root[data-theme="light"] table {
+  color: #0F172A !important;
+}
+
+body.light-theme table th,
+:root[data-theme="light"] table th {
+  color: #64748B !important;
+  border-bottom-color: #E2E8F0 !important;
+}
+
+body.light-theme table tr,
+:root[data-theme="light"] table tr,
+body.light-theme table td,
+:root[data-theme="light"] table td {
+  border-bottom-color: #F1F5F9 !important;
+}
+
+body.light-theme .page-content,
+:root[data-theme="light"] .page-content,
+body.light-theme .app-main,
+:root[data-theme="light"] .app-main,
+body.light-theme .app-shell,
+:root[data-theme="light"] .app-shell {
+  background: #F8FAFC !important;
+  color: #0F172A !important;
+}
+
+/* Search input & icons in light mode */
+body.light-theme .search-input,
+:root[data-theme="light"] .search-input {
+  background: #FFFFFF !important;
+  border-color: #CBD5E1 !important;
+  color: #0F172A !important;
+}
+
+/* Modals & Dialogs in Light Mode */
+body.light-theme #lookaraExportModal > div,
+:root[data-theme="light"] #lookaraExportModal > div,
+body.light-theme #lookaraDeleteAccountModal > div,
+:root[data-theme="light"] #lookaraDeleteAccountModal > div {
+  background: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+  color: #0F172A !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+}
+
+body.light-theme #exportPdfBtn,
+:root[data-theme="light"] #exportPdfBtn {
+  background: #F0F9FF !important;
+  border-color: #0284C7 !important;
+  color: #0284C7 !important;
+}
+
+body.light-theme #exportExcelBtn,
+:root[data-theme="light"] #exportExcelBtn {
+  background: #ECFDF5 !important;
+  border-color: #059669 !important;
+  color: #059669 !important;
+}
+
+/* Toggle Switches in Light Mode */
+body.light-theme .toggle,
+:root[data-theme="light"] .toggle {
+  background: #E2E8F0 !important;
+  border-color: #CBD5E1 !important;
+}
+
+body.light-theme .toggle.active,
+:root[data-theme="light"] .toggle.active {
+  background: var(--gold) !important;
+  border-color: var(--gold) !important;
+}
+
+body.light-theme .toggle::after,
+:root[data-theme="light"] .toggle::after {
+  background: #FFFFFF !important;
+}

@@ -1274,6 +1274,7 @@ export function initSettingsBridge(containerEl, { showToast, currentUser, curren
     window.applyWorkspaceTheme(savedTheme);
     const themeSelect = document.getElementById('prefTheme');
     if (themeSelect) themeSelect.value = savedTheme === 'light' ? 'Light Mode' : 'Dark Mode';
+  }
   
   // ==========================================
   // REAL FUNCTIONALITY ENGINE: SECURITY, REPORTS, SLA & COMPLIANCE
