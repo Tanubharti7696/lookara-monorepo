@@ -21,7 +21,8 @@ export default function AssignVendorOverlay({ task, onClose, onUpdate }) {
       })
       .then((data) => {
         if (isMounted) {
-          setCandidates(data.candidates || []);
+          const candidateList = Array.isArray(data) ? data : (data?.candidates || []);
+          setCandidates(candidateList);
           setLoading(false);
         }
       })

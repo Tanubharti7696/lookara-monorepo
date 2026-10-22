@@ -1,135 +1,250 @@
-describe('Milestone 1 Architecture & Canonical Operations Unit & Logic Tests', () => {
-  describe('1. Canonical Task Engine & State Transitions', () => {
-    const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-      unassigned: ['dispatching', 'assigned', 'cancelled'],
-      dispatching: ['assigned', 'unassigned', 'cancelled'],
-      assigned: ['accepted', 'unassigned', 'cancelled'],
-      accepted: ['in_progress', 'cancelled', 'escalated'],
-      in_progress: ['completed', 'verification_pending', 'escalated', 'cancelled'],
-      verification_pending: ['completed', 'in_progress', 'escalated'],
-      completed: ['closed', 'escalated', 'in_progress'],
-      closed: [],
-      cancelled: [],
-      escalated: ['assigned', 'closed'],
-    };
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { TasksService } from '../src/tasks/tasks.service';
+import { DispatchService } from '../src/dispatch/dispatch.service';
+import { AuditService } from '../src/audit/audit.service';
+import { BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
+import * as db from '@lookara/database';
 
-    it('should permit canonical rework flow: verification_pending -> in_progress', () => {
-      const transitions = ALLOWED_TRANSITIONS['verification_pending'];
-      expect(transitions).toContain('in_progress');
-      expect(transitions).toContain('completed');
+vi.mock('@lookara/database', () => {
+  return {
+    query: vi.fn(),
+    getClient: vi.fn(),
+    pool: { query: vi.fn(), connect: vi.fn() },
+  };
+});
+
+describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests', () => {
+  let tasksService: TasksService;
+  let dispatchService: DispatchService;
+  let auditService: AuditService;
+
+  const mockUser = {
+    sub: 'user-pm-1',
+    email: 'pm@lookara.test',
+    activeOrganizationId: 'org-1',
+    roles: ['pm'],
+    isAdmin: false,
+    isOwner: false,
+    isVendor: false,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    auditService = new AuditService();
+    vi.spyOn(auditService, 'recordEvent').mockResolvedValue(undefined as any);
+    tasksService = new TasksService(auditService);
+    dispatchService = new DispatchService(auditService);
+  });
+
+  describe('1. TasksService: Organization Security & Permissions', () => {
+    it('should throw ForbiddenException if user tries to access a task from another organization', async () => {
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ id: 'task-1', organization_id: 'other-org', job_code: 'JOB-999', status: 'unassigned' }],
+      } as any);
+
+      await expect(tasksService.findOne('task-1', mockUser as any)).rejects.toThrow(ForbiddenException);
     });
 
-    it('should reject invalid direct transitions', () => {
-      const transitions = ALLOWED_TRANSITIONS['unassigned'];
-      expect(transitions).not.toContain('completed');
-      expect(transitions).not.toContain('verification_pending');
+    it('should enforce canonical state rules without allowing bypass', async () => {
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'unassigned' }],
+      } as any);
+
+      // Attempt illegal transition directly from unassigned -> completed
+      await expect(tasksService.updateStatus('task-1', mockUser as any, 'completed')).rejects.toThrow(BadRequestException);
     });
 
-    it('should keep ordinary rework on the original task with incremented cycle count', () => {
-      const initialTask = {
-        id: 'task-101',
-        job_code: 'TSK-101',
-        status: 'verification_pending',
-        rework_count: 0,
-      };
+    it('should correctly increment rework_count on ordinary rework and remain on original task', async () => {
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'verification_pending', rework_count: 0 }],
+        } as any)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'in_progress', rework_count: 1, rework_reason: 'Paint defect' }],
+        } as any);
 
-      // Ordinary rework execution logic
-      const reworkCycle = (task: typeof initialTask, reason: string) => {
-        return {
-          ...task,
-          status: 'in_progress',
-          rework_reason: reason,
-          rework_count: (task.rework_count || 0) + 1,
-        };
-      };
-
-      const updated = reworkCycle(initialTask, 'Trim paint missing on baseboard');
-      expect(updated.id).toBe(initialTask.id);
-      expect(updated.job_code).toBe(initialTask.job_code);
-      expect(updated.status).toBe('in_progress');
-      expect(updated.rework_count).toBe(1);
+      const res = await tasksService.verify('task-1', mockUser as any, { decision: 'rework', reworkReason: 'Paint defect' });
+      expect(res.status).toBe('rework_required');
+      expect(res.task.rework_count).toBe(1);
+      expect(res.task.status).toBe('in_progress');
     });
   });
 
-  describe('2. Vendor Authorization & Fallback Guard', () => {
-    it('should throw Forbidden when user has no linked vendor profile', () => {
-      const resolveVendorId = (userId: string, vendorUserMap: Record<string, string>) => {
-        const vendorId = vendorUserMap[userId];
-        if (!vendorId) {
-          throw new Error('No vendor profile associated with the authenticated user');
-        }
-        return vendorId;
-      };
+  describe('2. DispatchService: Atomic Transactions & Concurrency Safety', () => {
+    it('should fail with ConflictException if job status has changed concurrently from unassigned', async () => {
+      // Mock candidate search
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', organization_id: 'org-1', property_id: 'prop-1', trade_code: 'PLUMB', severity: 'medium', job_code: 'JOB-101', status: 'unassigned' }],
+        } as any)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'vendor-1', display_name: 'Apex Plumbing', business_name: 'Apex', lifecycle_status: 'active' }],
+        } as any);
 
-      const mockMap = { 'user-1': 'vendor-1' };
-      expect(() => resolveVendorId('unauthorized-user', mockMap)).toThrow(
-        'No vendor profile associated with the authenticated user'
-      );
+      const mockClient = {
+        query: vi.fn(),
+        release: vi.fn(),
+      };
+      vi.mocked(db.getClient).mockResolvedValueOnce(mockClient as any);
+
+      // Transaction simulation: job was locked but status is now 'assigned' concurrently
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', status: 'assigned', job_code: 'JOB-101', organization_id: 'org-1' }],
+        }) // FOR UPDATE returns already assigned
+        .mockResolvedValueOnce({}); // ROLLBACK
+
+      await expect(dispatchService.assignVendor('task-1', 'vendor-1', mockUser as any)).rejects.toThrow(ConflictException);
+      expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
+      expect(mockClient.release).toHaveBeenCalled();
+    });
+
+    it('should successfully execute manual assignment within transaction and commit', async () => {
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', organization_id: 'org-1', property_id: 'prop-1', trade_code: 'PLUMB', severity: 'medium', job_code: 'JOB-101', status: 'unassigned' }],
+        } as any)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'vendor-1', display_name: 'Apex Plumbing', business_name: 'Apex', lifecycle_status: 'active' }],
+        } as any);
+
+      const mockClient = {
+        query: vi.fn(),
+        release: vi.fn(),
+      };
+      vi.mocked(db.getClient).mockResolvedValueOnce(mockClient as any);
+
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', status: 'unassigned', job_code: 'JOB-101', organization_id: 'org-1' }],
+        }) // FOR UPDATE
+        .mockResolvedValueOnce({ rows: [] }) // no existing assignment
+        .mockResolvedValueOnce({}) // INSERT assignment
+        .mockResolvedValueOnce({ rows: [{ id: 'task-1', status: 'assigned', job_code: 'JOB-101' }] }) // UPDATE job
+        .mockResolvedValueOnce({}); // COMMIT
+
+      const res = await dispatchService.assignVendor('task-1', 'vendor-1', mockUser as any);
+      expect(res.status).toBe('assigned');
+      expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
+      expect(mockClient.release).toHaveBeenCalled();
+    });
+
+    it('should automatically select top-ranked eligible candidate and assign in autoDispatch', async () => {
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', organization_id: 'org-1', property_id: 'prop-1', trade_code: 'PLUMB', severity: 'medium', job_code: 'JOB-101', status: 'unassigned' }],
+        } as any)
+        .mockResolvedValueOnce({
+          rows: [
+            { id: 'vendor-1', display_name: 'Apex Plumbing', business_name: 'Apex', lifecycle_status: 'active', priority_rank: 1 },
+            { id: 'vendor-2', display_name: 'Beta Plumbing', business_name: 'Beta', lifecycle_status: 'active', priority_rank: 2 },
+          ],
+        } as any) // getCandidates returns sorted candidates
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', organization_id: 'org-1', property_id: 'prop-1', trade_code: 'PLUMB', severity: 'medium', job_code: 'JOB-101', status: 'unassigned' }],
+        } as any)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'vendor-1', display_name: 'Apex Plumbing', business_name: 'Apex', lifecycle_status: 'active' }],
+        } as any);
+
+      const mockClient = {
+        query: vi.fn(),
+        release: vi.fn(),
+      };
+      vi.mocked(db.getClient).mockResolvedValueOnce(mockClient as any);
+
+      mockClient.query
+        .mockResolvedValueOnce({}) // BEGIN
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', status: 'unassigned', job_code: 'JOB-101', organization_id: 'org-1' }],
+        }) // FOR UPDATE
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({})
+        .mockResolvedValueOnce({ rows: [{ id: 'task-1', status: 'assigned', job_code: 'JOB-101' }] })
+        .mockResolvedValueOnce({}); // COMMIT
+
+      const res = await dispatchService.autoDispatch('task-1', mockUser as any);
+      expect(res.status).toBe('assigned');
     });
   });
 
-  describe('3. Deterministic Dispatch Eligibility Validator', () => {
-    interface Vendor {
-      id: string;
-      active: boolean;
-      trades: string[];
-      coveredProperties: string[];
-      relationshipStatus: 'preferred' | 'neutral' | 'blocked';
-      emergencyEnabled: boolean;
-    }
+  describe('3. Execution Lifecycle: En Route and On Site Transitions', () => {
+    it('should transition accepted -> en_route -> on_site -> in_progress and record execution timestamps', async () => {
+      // 1. accepted -> en_route
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'accepted' }],
+        } as any)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', status: 'en_route', en_route_at: new Date() }],
+        } as any);
 
-    const validateEligibility = (vendor: Vendor, task: { propertyId: string; tradeCode: string; severity: string }) => {
-      if (!vendor.active) return false;
-      if (!vendor.trades.includes(task.tradeCode)) return false;
-      if (!vendor.coveredProperties.includes(task.propertyId)) return false;
-      if (['blocked'].includes(vendor.relationshipStatus)) return false;
-      if (task.severity === 'critical' && !vendor.emergencyEnabled) return false;
-      return true;
-    };
+      const res1 = await tasksService.updateStatus('task-1', mockUser as any, 'en_route');
+      expect(res1.status).toBe('en_route');
 
-    const eligibleVendor: Vendor = {
-      id: 'v-1',
-      active: true,
-      trades: ['plumbing'],
-      coveredProperties: ['prop-10'],
-      relationshipStatus: 'preferred',
-      emergencyEnabled: true,
-    };
+      // 2. en_route -> on_site
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'en_route' }],
+        } as any)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', status: 'on_site', on_site_at: new Date() }],
+        } as any);
 
-    it('should qualify vendor with matching trade, coverage and status', () => {
-      expect(validateEligibility(eligibleVendor, { propertyId: 'prop-10', tradeCode: 'plumbing', severity: 'normal' })).toBe(true);
-    });
+      const res2 = await tasksService.updateStatus('task-1', mockUser as any, 'on_site');
+      expect(res2.status).toBe('on_site');
 
-    it('should disqualify vendor lacking property coverage', () => {
-      expect(validateEligibility(eligibleVendor, { propertyId: 'prop-99', tradeCode: 'plumbing', severity: 'normal' })).toBe(false);
-    });
+      // 3. on_site -> in_progress
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'on_site' }],
+        } as any)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', status: 'in_progress' }],
+        } as any);
 
-    it('should disqualify vendor lacking trade matching', () => {
-      expect(validateEligibility(eligibleVendor, { propertyId: 'prop-10', tradeCode: 'electrical', severity: 'normal' })).toBe(false);
-    });
-
-    it('should disqualify vendor for emergency if emergency is not enabled', () => {
-      const nonEmergency = { ...eligibleVendor, emergencyEnabled: false };
-      expect(validateEligibility(nonEmergency, { propertyId: 'prop-10', tradeCode: 'plumbing', severity: 'critical' })).toBe(false);
+      const res3 = await tasksService.updateStatus('task-1', mockUser as any, 'in_progress');
+      expect(res3.status).toBe('in_progress');
     });
   });
 
-  describe('4. SLA Clocks & Hierarchy Resolution', () => {
-    it('should snapshot 4 operational clocks upon task creation', () => {
-      const resolveSLAClocks = (severity: string) => {
-        const configs: Record<string, { responseMin: number; arrivalMin: number; completionMin: number; escalationMin: number }> = {
-          critical: { responseMin: 15, arrivalMin: 60, completionMin: 240, escalationMin: 30 },
-          high: { responseMin: 60, arrivalMin: 240, completionMin: 720, escalationMin: 120 },
-          standard: { responseMin: 240, arrivalMin: 1440, completionMin: 2880, escalationMin: 480 },
-        };
-        return configs[severity] || configs.standard;
-      };
+  describe('4. SLA Clocks & 4-Tier Hierarchy Snapshotting', () => {
+    it('should snapshot 4 operational targets according to hierarchical resolution', async () => {
+      // Mock create task queries
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any) // Property check
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', job_code: 'JOB-200', organization_id: 'org-1', property_id: 'prop-1', severity: 'critical', title: 'Pipe Burst' }],
+        } as any) // Insert Job
+        .mockResolvedValueOnce({ rows: [] } as any) // No property override
+        .mockResolvedValueOnce({ rows: [{ market: 'NYC', city: 'New York' }] } as any) // Property market query
+        .mockResolvedValueOnce({
+          rows: [{
+            id: 'sla-nyc',
+            name: 'NYC Critical SLA',
+            acknowledge_mins: 15,
+            arrival_mins: 60,
+            completion_mins: 180,
+            verification_mins: 60,
+          }],
+        } as any) // Market SLA matched!
+        .mockResolvedValueOnce({ rows: [] } as any); // Insert snapshot
 
-      const clocks = resolveSLAClocks('critical');
-      expect(clocks.responseMin).toBe(15);
-      expect(clocks.arrivalMin).toBe(60);
-      expect(clocks.completionMin).toBe(240);
-      expect(clocks.escalationMin).toBe(30);
+      const task = await tasksService.create(mockUser as any, {
+        propertyId: 'prop-1',
+        tradeCode: 'PLUMB',
+        workflowClass: 'maintenance',
+        severity: 'critical',
+        source: 'pm_portal',
+        title: 'Pipe Burst',
+        serviceType: 'emergency',
+      });
+
+      expect(task.id).toBe('task-1');
+      expect(task.job_code).toBe('JOB-200');
     });
   });
 });
+

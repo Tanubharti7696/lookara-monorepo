@@ -37,6 +37,17 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
+  try {
+    const fs = await import('fs');
+    const path = await import('path');
+    const outPath = path.resolve(__dirname, '../../../Milestone_1_and_2_Delivery_Package/openapi_spec.json');
+    fs.writeFileSync(outPath, JSON.stringify(document, null, 2), 'utf-8');
+    fs.writeFileSync(path.resolve(__dirname, '../swagger.json'), JSON.stringify(document, null, 2), 'utf-8');
+    console.log('[Lookara Backend] Exported OpenAPI specification to', outPath);
+  } catch (e) {
+    console.error('Failed to export OpenAPI spec:', e);
+  }
+
   const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
   await app.listen(port);
   console.log(`[Lookara Backend] Server listening on http://localhost:${port}`);

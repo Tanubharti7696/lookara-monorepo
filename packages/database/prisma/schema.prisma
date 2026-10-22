@@ -214,6 +214,7 @@ model VendorPropertyCoverage {
   propertyId          String
   status              String               // active, inactive
   createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
   vendor              Vendor               @relation(fields: [vendorId], references: [id])
   property            Property             @relation(fields: [propertyId], references: [id])
@@ -276,6 +277,10 @@ model Job {
   scheduledStart           DateTime?
   estimatedDurationMinutes Int?
   status                   String          // See canonical states
+  reworkCount              Int             @default(0)
+  reworkReason             String?
+  verifiedAt               DateTime?
+  verifiedByUserId         String?
   createdAt                DateTime        @default(now())
   updatedAt                DateTime        @updatedAt
 
@@ -529,6 +534,7 @@ model AuditEvent {
 model SlaTemplate {
   id                  String       @id @default(uuid())
   organizationId      String?
+  market              String?
   name                String
   severity            String       // critical, high, medium, low
   acknowledgeMins     Int

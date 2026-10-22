@@ -23,7 +23,9 @@ const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   unassigned: ['dispatching', 'assigned', 'cancelled'],
   dispatching: ['assigned', 'unassigned', 'cancelled'],
   assigned: ['accepted', 'unassigned', 'cancelled'],
-  accepted: ['in_progress', 'cancelled', 'escalated'],
+  accepted: ['en_route', 'in_progress', 'cancelled', 'escalated'],
+  en_route: ['on_site', 'cancelled', 'escalated'],
+  on_site: ['in_progress', 'cancelled', 'escalated'],
   in_progress: ['completed', 'verification_pending', 'escalated', 'cancelled'],
   verification_pending: ['completed', 'in_progress', 'escalated'],
   completed: ['closed', 'escalated', 'in_progress'],
@@ -165,39 +167,77 @@ export class TasksService {
     ]);
     const task = res.rows[0];
 
-    // SLA Snapshotting Logic
-    // 1. Try to find a property override SLA
+    // Canonical SLA Snapshotting Hierarchy (Property Override -> Market Tier -> Org Tier -> Lookara Default)
+    const sev = dto.severity || 'low';
+    
+    // 1. Property Override SLA
     let slaRes = await query(
       `SELECT st.* FROM sla_templates st
        JOIN property_sla_overrides pso ON st.id = pso.sla_template_id
-       WHERE pso.property_id = $1`,
+       WHERE pso.property_id = $1 LIMIT 1`,
       [dto.propertyId]
     );
 
-    // 2. If no override, try to find an org-level SLA matching severity
+    // 2. Market-level SLA (based on property market/city)
+    if (slaRes.rows.length === 0) {
+      const propMarketRes = await query(`SELECT market, city FROM properties WHERE id = $1`, [dto.propertyId]);
+      const marketVal = propMarketRes.rows[0]?.market || propMarketRes.rows[0]?.city;
+      if (marketVal) {
+        slaRes = await query(
+          `SELECT * FROM sla_templates 
+           WHERE market = $1 AND severity = $2 
+           ORDER BY created_at DESC LIMIT 1`,
+          [marketVal, sev]
+        );
+      }
+    }
+
+    // 3. Organization-level SLA
     if (slaRes.rows.length === 0) {
       slaRes = await query(
-        `SELECT * FROM sla_templates WHERE organization_id = $1 AND severity = $2 LIMIT 1`,
-        [orgId, dto.severity || 'low']
+        `SELECT * FROM sla_templates 
+         WHERE organization_id = $1 AND severity = $2 
+         ORDER BY created_at DESC LIMIT 1`,
+        [orgId, sev]
       );
     }
 
-    if (slaRes.rows.length > 0) {
-      const sla = slaRes.rows[0];
-      const now = new Date();
-      
-      const ackTarget = new Date(now.getTime() + sla.acknowledge_mins * 60000);
-      const arrTarget = new Date(now.getTime() + sla.arrival_mins * 60000);
-      const compTarget = new Date(now.getTime() + sla.completion_mins * 60000);
-      const verTarget = new Date(now.getTime() + sla.verification_mins * 60000);
-
-      await query(
-        `INSERT INTO job_sla_snapshots (
-          job_id, sla_template_id, acknowledge_target, arrival_target, completion_target, verification_target
-         ) VALUES ($1, $2, $3, $4, $5, $6)`,
-        [task.id, sla.id, ackTarget, arrTarget, compTarget, verTarget]
+    // 4. Lookara Global Default Tier
+    if (slaRes.rows.length === 0) {
+      slaRes = await query(
+        `SELECT * FROM sla_templates 
+         WHERE (organization_id IS NULL OR market IS NULL) AND severity = $1 
+         ORDER BY created_at ASC LIMIT 1`,
+        [sev]
       );
     }
+
+    // Fallback baseline SLA parameters if no rows exist in database
+    const sla = slaRes.rows[0] || {
+      id: null,
+      acknowledge_mins: sev === 'critical' ? 15 : sev === 'high' ? 30 : 60,
+      arrival_mins: sev === 'critical' ? 60 : sev === 'high' ? 120 : 240,
+      completion_mins: sev === 'critical' ? 240 : sev === 'high' ? 480 : 1440,
+      verification_mins: 120,
+    };
+
+    const now = new Date();
+    const ackTarget = new Date(now.getTime() + (sla.acknowledge_mins || 30) * 60000);
+    const arrTarget = new Date(now.getTime() + (sla.arrival_mins || 60) * 60000);
+    const compTarget = new Date(now.getTime() + (sla.completion_mins || 240) * 60000);
+    const verTarget = new Date(now.getTime() + (sla.verification_mins || 120) * 60000);
+
+    await query(
+      `INSERT INTO job_sla_snapshots (
+        job_id, sla_template_id, acknowledge_target, arrival_target, completion_target, verification_target
+       ) VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (job_id) DO UPDATE SET
+        acknowledge_target = EXCLUDED.acknowledge_target,
+        arrival_target = EXCLUDED.arrival_target,
+        completion_target = EXCLUDED.completion_target,
+        verification_target = EXCLUDED.verification_target`,
+      [task.id, sla.id || null, ackTarget, arrTarget, compTarget, verTarget]
+    );
 
     // Audit log
     await this.auditService.recordEvent({
@@ -218,16 +258,25 @@ export class TasksService {
     const task = await this.findOne(id, user);
 
     const allowed = ALLOWED_TRANSITIONS[task.status] || [];
-    if (!allowed.includes(newStatus) && !user.isAdmin) {
+    if (!allowed.includes(newStatus)) {
       throw new BadRequestException(
-        `Invalid status transition from "${task.status}" to "${newStatus}". Allowed: ${allowed.join(', ') || 'none'}`,
+        `Invalid status transition from "${task.status}" to "${newStatus}". Canonical state rules permit: ${allowed.join(', ') || 'none'}`,
       );
     }
 
-    const res = await query(`UPDATE jobs SET status = $1, updated_at = now() WHERE id = $2 RETURNING *`, [
-      newStatus,
-      id,
-    ]);
+    let timestampUpdate = '';
+    if (newStatus === 'en_route') {
+      timestampUpdate = ', en_route_at = COALESCE(en_route_at, now())';
+    } else if (newStatus === 'on_site') {
+      timestampUpdate = ', on_site_at = COALESCE(on_site_at, now())';
+    } else if (newStatus === 'completed' || newStatus === 'closed') {
+      timestampUpdate = ', completed_at = COALESCE(completed_at, now())';
+    }
+
+    const res = await query(
+      `UPDATE jobs SET status = $1, updated_at = now()${timestampUpdate} WHERE id = $2 RETURNING *`,
+      [newStatus, id]
+    );
 
     await this.auditService.recordEvent({
       actorType: user.isAdmin ? 'admin' : user.isVendor ? 'vendor' : 'pm',

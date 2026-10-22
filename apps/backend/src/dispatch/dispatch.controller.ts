@@ -23,4 +23,12 @@ export class DispatchController {
   ) {
     return this.dispatchService.assignVendor(jobId, vendorId, user);
   }
+
+  @Post('auto')
+  async autoDispatch(
+    @CurrentUser() user: JwtPayload,
+    @Body('jobId') jobId: string,
+  ) {
+    return this.dispatchService.autoDispatch(jobId, user);
+  }
 }

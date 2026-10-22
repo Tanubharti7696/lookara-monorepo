@@ -13,22 +13,36 @@ export class VendorsService {
 
     const res = await query(`
       SELECT v.*, ov.relationship_status as org_status,
+             u.email as user_email, u.phone as user_phone,
              (SELECT count(*) FROM job_assignments ja JOIN jobs j ON ja.job_id = j.id WHERE ja.vendor_id = v.id AND j.organization_id = $1) as task_count,
-             (SELECT count(*) FROM vendor_trades vt WHERE vt.vendor_id = v.id) as trade_count
+             (SELECT count(*) FROM vendor_trades vt WHERE vt.vendor_id = v.id) as trade_count,
+             (
+               SELECT review_status 
+               FROM vendor_documents vd 
+               WHERE vd.vendor_id = v.id AND vd.document_type ILIKE '%insurance%' 
+               ORDER BY vd.created_at DESC LIMIT 1
+             ) as ins_status,
+             (
+               SELECT review_status 
+               FROM vendor_documents vd 
+               WHERE vd.vendor_id = v.id AND (vd.document_type ILIKE '%w9%' OR vd.document_type ILIKE '%w-9%')
+               ORDER BY vd.created_at DESC LIMIT 1
+             ) as w9_doc_status
       FROM vendors v
       JOIN organization_vendors ov ON v.id = ov.vendor_id
+      LEFT JOIN users u ON v.user_id = u.id
       WHERE ov.organization_id = $1
     `, [orgId]);
 
     return res.rows.map(row => ({
       id: row.id,
       name: row.display_name || row.business_name,
-      contact_email: 'vendor@example.com',
-      contact_phone: '555-0100',
-      tier: 'Standard',
+      contact_email: row.user_email || 'vendor@lookara.internal',
+      contact_phone: row.user_phone || 'Unlisted',
+      tier: row.org_status === 'preferred' ? 'Preferred' : 'Standard',
       org_status: row.org_status,
-      insurance_status: 'verified',
-      w9_status: 'verified',
+      insurance_status: row.ins_status === 'approved' ? 'verified' : (row.ins_status || 'unverified'),
+      w9_status: row.w9_doc_status === 'approved' ? 'verified' : (row.w9_doc_status || 'unverified'),
       task_count: parseInt(row.task_count || '0', 10),
       trade_count: parseInt(row.trade_count || '0', 10),
       rating: 4.8
@@ -247,12 +261,12 @@ export class VendorsService {
   }
 
   /**
-   * Update execution status of job (in_progress, verification_pending, completed)
+   * Update execution status of job (en_route, on_site, in_progress, verification_pending, completed)
    */
   async updateJobExecution(
     jobId: string,
     user: JwtPayload,
-    body: { status: 'in_progress' | 'verification_pending' | 'completed'; notes?: string }
+    body: { status: 'en_route' | 'on_site' | 'in_progress' | 'verification_pending' | 'completed'; notes?: string }
   ) {
     const vendorId = await this.getVendorIdForUser(user);
 
@@ -277,12 +291,25 @@ export class VendorsService {
       }
     }
 
-    if (body.status === 'completed' || body.status === 'verification_pending') {
-      await query(`UPDATE job_assignments SET completed_at = now() WHERE id = $1`, [assignRes.rows[0].id]);
+    if (body.status === 'en_route') {
+      await query(`UPDATE job_assignments SET en_route_at = COALESCE(en_route_at, now()) WHERE id = $1`, [assignRes.rows[0].id]);
+    } else if (body.status === 'on_site') {
+      await query(`UPDATE job_assignments SET on_site_at = COALESCE(on_site_at, now()) WHERE id = $1`, [assignRes.rows[0].id]);
+    } else if (body.status === 'completed' || body.status === 'verification_pending') {
+      await query(`UPDATE job_assignments SET completed_at = COALESCE(completed_at, now()) WHERE id = $1`, [assignRes.rows[0].id]);
+    }
+
+    let timestampJobUpdate = '';
+    if (body.status === 'en_route') {
+      timestampJobUpdate = ', en_route_at = COALESCE(en_route_at, now())';
+    } else if (body.status === 'on_site') {
+      timestampJobUpdate = ', on_site_at = COALESCE(on_site_at, now())';
+    } else if (body.status === 'completed' || body.status === 'verification_pending') {
+      timestampJobUpdate = ', completed_at = COALESCE(completed_at, now())';
     }
 
     const updatedJob = await query(
-      `UPDATE jobs SET status = $1, updated_at = now() WHERE id = $2 RETURNING *`,
+      `UPDATE jobs SET status = $1, updated_at = now()${timestampJobUpdate} WHERE id = $2 RETURNING *`,
       [body.status, jobId]
     );
 

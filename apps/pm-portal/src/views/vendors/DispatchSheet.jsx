@@ -1,14 +1,14 @@
 // src/views/vendors/DispatchSheet.jsx
 import { useState, useEffect } from 'react';
-
-const JOBS = [
-  { id: 'TSK-2901', title: 'Turnover Clean',   prop: 'Apt 4B · Brooklyn Heights · Unassigned', section: 'at-risk',   time: '43m',      timeSub: 'remaining', timeTone: 'urgent' },
-  { id: 'TSK-2888', title: 'Standard Clean',   prop: 'Loft 2A · DUMBO · Unassigned',           section: 'upcoming',  time: '3h 45m',   timeSub: 'remaining', timeTone: 'soon'   },
-  { id: 'TSK-2915', title: 'Deep Clean',       prop: 'Suite 7C · Park Slope · Unassigned',     section: 'upcoming',  time: 'Tomorrow', timeSub: '9:00 AM',   timeTone: 'ok'     },
-];
+import { apiFetch } from '../../utils/api';
 
 export default function DispatchSheet({ VD, vendorId, onClose, onConfirm, onToast }) {
   const [selectedJob, setSelectedJob] = useState(null);
+  const [jobs, setJobs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isDispatching, setIsDispatching] = useState(false);
+
+  const v = VD[vendorId] || {};
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -16,14 +16,46 @@ export default function DispatchSheet({ VD, vendorId, onClose, onConfirm, onToas
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const v = VD[vendorId] || {};
+  useEffect(() => {
+    let isMounted = true;
+    setLoading(true);
+    apiFetch('/api/v1/tasks?status=unassigned')
+      .then(res => res.json())
+      .then(data => {
+        if (!isMounted) return;
+        const taskList = data.data || [];
+        setJobs(taskList);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (isMounted) setLoading(false);
+      });
 
-  const handleConfirm = () => {
+    return () => { isMounted = false; };
+  }, [vendorId]);
+
+  const handleConfirm = async () => {
     if (!selectedJob) {
-      onToast('Select a job first', 'error');
+      onToast('Select a task first', 'error');
       return;
     }
-    onConfirm(selectedJob);
+    setIsDispatching(true);
+    try {
+      const res = await apiFetch('/api/v1/dispatch/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: selectedJob, vendorId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Dispatch assignment failed');
+      }
+      onConfirm(selectedJob);
+    } catch (e) {
+      onToast(e.message || 'Failed to dispatch vendor', 'error');
+    } finally {
+      setIsDispatching(false);
+    }
   };
 
   return (
@@ -37,32 +69,56 @@ export default function DispatchSheet({ VD, vendorId, onClose, onConfirm, onToas
           <div className="vs-simple-title">Send to Job</div>
           <div className="vs-simple-sub">{v.name}</div>
           <div className="vs-tag-row">
-            <span className="vs-tag">📍 Brooklyn Heights · DUMBO</span>
-            <span className="vs-tag">🔧 {v.trade}</span>
+            <span className="vs-tag">📍 Coverage Area</span>
+            <span className="vs-tag">🔧 {v.trade || 'General'}</span>
           </div>
         </div>
 
         <div className="vs-body">
           <div className="vs-info-box">
-            Showing: <strong style={{ color: 'var(--gold)' }}>{v.trade} jobs</strong> · vendor coverage area · unassigned only
+            Showing: <strong style={{ color: 'var(--gold)' }}>{v.trade || 'Eligible'} tasks</strong> · vendor coverage area · unassigned only
           </div>
 
-          <div className="vs-job-section vs-job-section--critical">⚠ SLA At Risk</div>
-          {JOBS.filter(j => j.section === 'at-risk').map(j => (
-            <JobRow key={j.id} job={j} selected={selectedJob === j.id} onSelect={() => setSelectedJob(j.id)} />
-          ))}
-
-          <div className="vs-job-section" style={{ marginTop: 12 }}>Upcoming Jobs</div>
-          {JOBS.filter(j => j.section === 'upcoming').map(j => (
-            <JobRow key={j.id} job={j} selected={selectedJob === j.id} onSelect={() => setSelectedJob(j.id)} />
-          ))}
-
-          <div className="vs-hidden-note">🚫 4 jobs hidden — outside vendor coverage area (Miami · Orlando)</div>
+          {loading ? (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--slate)' }}>Loading unassigned tasks...</div>
+          ) : jobs.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--slate)', fontSize: 13 }}>
+              No unassigned tasks currently waiting for dispatch.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 12 }}>
+              {jobs.map(j => (
+                <div
+                  key={j.id}
+                  className={`vs-job-row ${selectedJob === j.id ? 'selected' : ''}`}
+                  onClick={() => setSelectedJob(j.id)}
+                  style={{
+                    padding: 12,
+                    borderRadius: 8,
+                    border: selectedJob === j.id ? '2px solid var(--gold)' : '1px solid rgba(255,255,255,0.08)',
+                    background: selectedJob === j.id ? 'rgba(212,175,55,0.08)' : 'rgba(255,255,255,0.02)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <strong style={{ fontSize: 13, color: '#fff' }}>{j.job_code || j.title}</strong>
+                    <span style={{ fontSize: 11, textTransform: 'uppercase', color: j.severity === 'critical' ? 'var(--crimson)' : 'var(--gold)' }}>
+                      {j.severity}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--white-muted)' }}>{j.title}</div>
+                  <div style={{ fontSize: 11, color: 'var(--slate)', marginTop: 4 }}>
+                    {j.property_name || 'Property'} · {j.trade_code}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="vs-footer">
-          <button className="vs-dispatch-btn" onClick={handleConfirm}>
-            Dispatch Vendor
+          <button className="vs-dispatch-btn" onClick={handleConfirm} disabled={isDispatching || loading || jobs.length === 0}>
+            {isDispatching ? 'Dispatching...' : 'Dispatch Vendor'}
           </button>
         </div>
       </div>

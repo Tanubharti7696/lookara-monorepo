@@ -33,9 +33,14 @@ export default function VerifyWorkOverlay({ task, onClose, onUpdate }) {
 
       const result = await res.json();
       if (decision === 'approve') {
-        onUpdate?.({ state: 'completed', verified: true });
+        onUpdate?.({ state: 'closed', status: 'closed', verified: true });
       } else {
-        onUpdate?.({ state: 'escalated', reworkSpawned: true });
+        onUpdate?.({ 
+          state: 'in_progress', 
+          status: 'in_progress', 
+          reworkCount: result.task?.rework_count || 1,
+          reworkReason: reworkReason 
+        });
       }
       onClose();
     } catch (err) {
@@ -61,7 +66,7 @@ export default function VerifyWorkOverlay({ task, onClose, onUpdate }) {
           <div className="lk-banner lk-banner--blue" style={{ marginBottom: 14 }}>
             <div className="lk-banner__title">🛡 Quality Assurance Control</div>
             <div className="lk-banner__sub">
-              Verify work evidence before releasing payment or closing out the task. If quality is deficient, Lookara automatically spawns a linked Rework Task assigned to the original vendor.
+              Verify work evidence before releasing payment or closing out the task. If quality is deficient, the task is returned to In Progress on the same Task with an incremented rework cycle counter for the assigned vendor.
             </div>
           </div>
 

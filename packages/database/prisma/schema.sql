@@ -223,6 +223,7 @@ CREATE TABLE IF NOT EXISTS vendor_property_coverage (
   property_id UUID NOT NULL REFERENCES properties(id) ON DELETE CASCADE,
   status TEXT NOT NULL CHECK (status IN ('active', 'inactive')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(vendor_id, property_id)
 );
 
@@ -252,6 +253,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     'dispatching',
     'assigned',
     'accepted',
+    'en_route',
+    'on_site',
     'in_progress',
     'completed',
     'verification_pending',
@@ -259,6 +262,12 @@ CREATE TABLE IF NOT EXISTS jobs (
     'cancelled',
     'escalated'
   )),
+  rework_count INTEGER NOT NULL DEFAULT 0,
+  rework_reason TEXT,
+  en_route_at TIMESTAMPTZ,
+  on_site_at TIMESTAMPTZ,
+  verified_at TIMESTAMPTZ,
+  verified_by_user_id UUID REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -306,6 +315,8 @@ CREATE TABLE IF NOT EXISTS job_assignments (
   assignment_type TEXT NOT NULL CHECK (assignment_type IN ('auto','manual')),
   assigned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   accepted_at TIMESTAMPTZ,
+  en_route_at TIMESTAMPTZ,
+  on_site_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ
 );
 
@@ -444,6 +455,7 @@ ALTER TABLE properties ADD COLUMN IF NOT EXISTS compliance_template TEXT;
 CREATE TABLE IF NOT EXISTS sla_templates (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+  market TEXT,
   name TEXT NOT NULL,
   severity TEXT NOT NULL,
   acknowledge_mins INTEGER NOT NULL,

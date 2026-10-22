@@ -22,12 +22,21 @@ async function migrate() {
   await client.connect();
 
   try {
-    const sqlPath = path.join(__dirname, '..', 'prisma', 'schema.sql');
-    const sql = fs.readFileSync(sqlPath, 'utf8');
-
-    console.log('[Migrate] Executing schema.sql DDL migrations...');
-    await client.query(sql);
-    console.log('[Migrate] Database schema applied successfully!');
+    const migrationsDir = path.join(__dirname, '..', 'migrations');
+    if (fs.existsSync(migrationsDir)) {
+      const files = fs.readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
+      for (const file of files) {
+        console.log(`[Migrate] Executing migration: ${file}...`);
+        const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+        await client.query(sql);
+      }
+    } else {
+      const sqlPath = path.join(__dirname, '..', 'prisma', 'schema.sql');
+      const sql = fs.readFileSync(sqlPath, 'utf8');
+      console.log('[Migrate] Executing schema.sql DDL migrations...');
+      await client.query(sql);
+    }
+    console.log('[Migrate] Database schema & versioned migrations applied successfully!');
   } catch (err) {
     console.error('[Migrate] Migration failed:', err);
     process.exit(1);
