@@ -1,5 +1,5 @@
 // apps/backend/src/dashboard/dashboard.service.ts
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
 import { query } from '@lookara/database';
 import type { JwtPayload } from '@lookara/auth';
 
@@ -27,6 +27,35 @@ export interface ActivityQueryParams {
   propertyId?: string;
   page?: number;
   pageSize?: number;
+}
+
+const VALID_CRITICAL_FILTERS = ['emergency', 'sla_risk', 'vendor_coverage', 'all'];
+const VALID_ACTIVITY_CATEGORIES = ['sla', 'dispatch', 'compliance', 'vendor', 'task'];
+
+function isValidIanaTimezone(tz: string): boolean {
+  if (!tz || typeof tz !== 'string') return false;
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: tz });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function isValidIsoDate(d: string): boolean {
+  if (!d || typeof d !== 'string') return false;
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) && !isNaN(Date.parse(d));
+}
+
+function createValidationError(field: string, message: string) {
+  return new HttpException(
+    {
+      code: 'INVALID_QUERY',
+      message,
+      field,
+    },
+    HttpStatus.BAD_REQUEST,
+  );
 }
 
 @Injectable()
@@ -80,21 +109,32 @@ export class DashboardService {
    */
   async getHome(user: JwtPayload, params: HomeQueryParams) {
     if (!params.date) {
-      throw new BadRequestException('Query parameter "date" (YYYY-MM-DD) is required');
+      throw createValidationError('date', 'date parameter is required (format: YYYY-MM-DD)');
     }
+    if (!isValidIsoDate(params.date)) {
+      throw createValidationError('date', 'date must be a valid date in YYYY-MM-DD format');
+    }
+
     if (!params.timezone) {
-      throw new BadRequestException('Query parameter "timezone" (IANA timezone string) is required');
+      throw createValidationError('timezone', 'timezone parameter is required');
+    }
+    if (!isValidIanaTimezone(params.timezone)) {
+      throw createValidationError('timezone', 'timezone must be a valid IANA timezone string (e.g. America/New_York)');
+    }
+
+    if (params.criticalFilter && !VALID_CRITICAL_FILTERS.includes(params.criticalFilter)) {
+      throw createValidationError('criticalFilter', `criticalFilter must be one of: ${VALID_CRITICAL_FILTERS.join(', ')}`);
     }
 
     const orgId = user.activeOrganizationId;
     const filterType = params.criticalFilter || 'emergency';
     const serverTime = new Date().toISOString();
 
-    // 1. Badges: openTasks (non-terminal) & unreadNotifications
+    // 1. Badges: openTasks (non-terminal) & unreadNotifications (using read_at IS NULL and organization_users)
     const badgeRes = await query(`
       SELECT
         (SELECT count(*) FROM jobs WHERE status NOT IN ('closed', 'completed', 'cancelled') ${orgId ? `AND organization_id = '${orgId}'` : ''}) as open_tasks,
-        (SELECT count(*) FROM notifications WHERE read = false ${orgId ? `AND organization_id = '${orgId}'` : ''}) as unread_notifications
+        (SELECT count(*) FROM notifications WHERE read_at IS NULL ${orgId ? `AND target_id IN (SELECT user_id FROM organization_users WHERE organization_id = '${orgId}')` : ''}) as unread_notifications
     `);
     const badges = {
       openTasks: parseInt(badgeRes.rows[0]?.open_tasks || '0', 10),
@@ -322,14 +362,23 @@ export class DashboardService {
     });
 
     // 8. Recent Activity (Audit events up to 5)
-    const activityRes = await query(`
+    let activitySql = `
       SELECT id, category, event_type, summary, created_at, target_id
       FROM audit_events
       WHERE true
-        ${orgId ? `AND (metadata->>'organizationId' = '${orgId}' OR target_id IN (SELECT id::text FROM jobs WHERE organization_id = '${orgId}'))` : ''}
-      ORDER BY created_at DESC
-      LIMIT 5
-    `);
+    `;
+    const activityParams: any[] = [];
+    if (orgId) {
+      activitySql += ` AND (
+        target_id IN (SELECT id FROM jobs WHERE organization_id = $1::uuid)
+        OR target_id IN (SELECT id FROM properties WHERE organization_id = $1::uuid)
+        OR target_id = $1::uuid
+      )`;
+      activityParams.push(orgId);
+    }
+    activitySql += ` ORDER BY created_at DESC LIMIT 5`;
+
+    const activityRes = await query(activitySql, activityParams);
 
     const recentActivityItems = activityRes.rows.map((row: any) => ({
       id: row.id,
@@ -511,8 +560,23 @@ export class DashboardService {
    * GET /dashboard/critical-actions
    */
   async getCriticalActions(user: JwtPayload, params: CriticalActionsQueryParams) {
-    if (!params.date) throw new BadRequestException('Query parameter "date" is required');
-    if (!params.timezone) throw new BadRequestException('Query parameter "timezone" is required');
+    if (!params.date) {
+      throw createValidationError('date', 'date parameter is required (format: YYYY-MM-DD)');
+    }
+    if (!isValidIsoDate(params.date)) {
+      throw createValidationError('date', 'date must be a valid date in YYYY-MM-DD format');
+    }
+
+    if (!params.timezone) {
+      throw createValidationError('timezone', 'timezone parameter is required');
+    }
+    if (!isValidIanaTimezone(params.timezone)) {
+      throw createValidationError('timezone', 'timezone must be a valid IANA timezone string (e.g. America/New_York)');
+    }
+
+    if (params.filter && !VALID_CRITICAL_FILTERS.includes(params.filter)) {
+      throw createValidationError('filter', `filter must be one of: ${VALID_CRITICAL_FILTERS.join(', ')}`);
+    }
 
     const page = Math.max(1, params.page || 1);
     const pageSize = Math.min(100, params.pageSize || 20);
@@ -542,8 +606,23 @@ export class DashboardService {
    * GET /dashboard/activity
    */
   async getActivity(user: JwtPayload, params: ActivityQueryParams) {
-    if (!params.date) throw new BadRequestException('Query parameter "date" is required');
-    if (!params.timezone) throw new BadRequestException('Query parameter "timezone" is required');
+    if (!params.date) {
+      throw createValidationError('date', 'date parameter is required (format: YYYY-MM-DD)');
+    }
+    if (!isValidIsoDate(params.date)) {
+      throw createValidationError('date', 'date must be a valid date in YYYY-MM-DD format');
+    }
+
+    if (!params.timezone) {
+      throw createValidationError('timezone', 'timezone parameter is required');
+    }
+    if (!isValidIanaTimezone(params.timezone)) {
+      throw createValidationError('timezone', 'timezone must be a valid IANA timezone string (e.g. America/New_York)');
+    }
+
+    if (params.category && !VALID_ACTIVITY_CATEGORIES.includes(params.category)) {
+      throw createValidationError('category', `category must be one of: ${VALID_ACTIVITY_CATEGORIES.join(', ')}`);
+    }
 
     const orgId = user.activeOrganizationId;
     const page = Math.max(1, params.page || 1);
@@ -551,12 +630,16 @@ export class DashboardService {
     const offset = (page - 1) * pageSize;
     const serverTime = new Date().toISOString();
 
-    const conditions: string[] = ['true'];
+    const conditions: string[] = [];
     const values: any[] = [];
     let idx = 1;
 
     if (orgId) {
-      conditions.push(`(metadata->>'organizationId' = $${idx} OR target_id IN (SELECT id::text FROM jobs WHERE organization_id = $${idx}))`);
+      conditions.push(`(
+        target_id IN (SELECT id FROM jobs WHERE organization_id = $${idx}::uuid)
+        OR target_id IN (SELECT id FROM properties WHERE organization_id = $${idx}::uuid)
+        OR target_id = $${idx}::uuid
+      )`);
       values.push(orgId);
       idx++;
     }
@@ -568,19 +651,21 @@ export class DashboardService {
     }
 
     // Filter to the specified local calendar day
-    conditions.push(`created_at::date = $${idx}`);
+    conditions.push(`created_at::date = $${idx}::date`);
     values.push(params.date);
     idx++;
 
     values.push(pageSize);
     values.push(offset);
 
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
     const res = await query(`
       SELECT id, category, event_type, summary, created_at, target_id
       FROM audit_events
-      WHERE ${conditions.join(' AND ')}
+      ${whereClause}
       ORDER BY created_at DESC
-      LIMIT $${idx - 2} OFFSET $${idx - 1}
+      LIMIT $${idx} OFFSET $${idx + 1}
     `, values);
 
     const data = res.rows.map((row: any) => ({
