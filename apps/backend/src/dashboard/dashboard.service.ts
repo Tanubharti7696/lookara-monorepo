@@ -662,25 +662,32 @@ export class DashboardService {
       conditions.push(`category = $${idx}`);
       values.push(params.category);
       idx++;
+    } else {
+      conditions.push(`category IN ('dispatch', 'sla', 'compliance', 'vendor', 'task')`);
     }
 
     // Filter to the specified local calendar day
-    conditions.push(`created_at::date = $${idx}::date`);
-    values.push(params.date);
-    idx++;
-
-    values.push(pageSize);
-    values.push(offset);
+    conditions.push(`(created_at AT TIME ZONE $${idx})::date = $${idx + 1}::date`);
+    values.push(params.timezone, params.date);
+    idx += 2;
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
+    const countRes = await query(`
+      SELECT count(*) as total
+      FROM audit_events
+      ${whereClause}
+    `, values);
+    const totalCount = parseInt(countRes.rows[0]?.total || '0', 10);
+
+    const paginatedValues = [...values, pageSize, offset];
     const res = await query(`
       SELECT id, category, event_type, summary, created_at, target_id
       FROM audit_events
       ${whereClause}
       ORDER BY created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1}
-    `, values);
+    `, paginatedValues);
 
     const data = res.rows.map((row: any) => ({
       id: row.id,
@@ -702,8 +709,8 @@ export class DashboardService {
       meta: {
         page,
         pageSize,
-        total: data.length,
-        hasMore: data.length === pageSize,
+        total: totalCount,
+        hasMore: offset + data.length < totalCount,
         serverTime,
       },
       errors: [],
