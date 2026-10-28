@@ -4,6 +4,8 @@ import { query } from '@lookara/database';
 import { AuditService } from '../audit/audit.service';
 import type { JwtPayload } from '@lookara/auth';
 
+import { TaskPolicyService } from './task-policy.service';
+
 export interface CreateTaskDto {
   propertyId: string;
   tradeCode: string;
@@ -19,24 +21,12 @@ export interface CreateTaskDto {
   estimatedDurationMinutes?: number;
 }
 
-const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  unassigned: ['dispatching', 'assigned', 'cancelled'],
-  dispatching: ['assigned', 'unassigned', 'cancelled'],
-  assigned: ['accepted', 'unassigned', 'cancelled'],
-  accepted: ['en_route', 'in_progress', 'cancelled', 'escalated'],
-  en_route: ['on_site', 'cancelled', 'escalated'],
-  on_site: ['in_progress', 'cancelled', 'escalated'],
-  in_progress: ['completed', 'verification_pending', 'escalated', 'cancelled'],
-  verification_pending: ['completed', 'in_progress', 'escalated'],
-  completed: ['closed', 'escalated', 'in_progress'],
-  closed: [],
-  cancelled: [],
-  escalated: ['assigned', 'closed'],
-};
-
 @Injectable()
 export class TasksService {
-  constructor(private readonly auditService: AuditService) {}
+  constructor(
+    private readonly auditService: AuditService,
+    private readonly taskPolicyService: TaskPolicyService,
+  ) {}
 
   async findAll(user: JwtPayload, options: {
     propertyId?: string;
@@ -53,10 +43,15 @@ export class TasksService {
     const values: any[] = [];
     let idx = 1;
 
-    // Organization filter
-    if (user.activeOrganizationId) {
+    // Organization or role filter
+    if (user.activeOrganizationId && !user.isVendor) {
       conditions.push(`j.organization_id = $${idx++}`);
       values.push(user.activeOrganizationId);
+    } else if (user.isVendor || user.activePortal === 'vendor') {
+      const vendorId = await this.taskPolicyService.getVendorIdForUser(user);
+      if (!vendorId) throw new ForbiddenException('No active vendor profile found');
+      conditions.push(`j.id IN (SELECT job_id FROM job_assignments WHERE vendor_id = $${idx++})`);
+      values.push(vendorId);
     } else if (user.isOwner && !user.isAdmin) {
       // Owner only sees jobs on their properties
       conditions.push(`j.property_id IN (
@@ -115,10 +110,8 @@ export class TasksService {
     if (res.rows.length === 0) throw new NotFoundException('Task not found');
     const task = res.rows[0];
 
-    // Enforce tenant boundary
-    if (user.activeOrganizationId && task.organization_id !== user.activeOrganizationId && !user.isAdmin) {
-      throw new ForbiddenException('Task does not belong to your organization');
-    }
+    // Centralized policy authorization check
+    await this.taskPolicyService.authorize(user, task, 'view');
 
     return task;
   }
@@ -126,6 +119,10 @@ export class TasksService {
   async create(user: JwtPayload, dto: CreateTaskDto) {
     const orgId = user.activeOrganizationId;
     if (!orgId) throw new ForbiddenException('Active organization context required to create tasks');
+
+    if (user.isVendor && !user.isAdmin) {
+      throw new ForbiddenException('Vendors are not authorized to create tasks');
+    }
 
     if (dto.propertyId) {
       // Verify property belongs to this organization
@@ -254,22 +251,24 @@ export class TasksService {
     return task;
   }
 
-  async updateStatus(id: string, user: JwtPayload, newStatus: string) {
+  async updateStatus(id: string, user: JwtPayload, newStatus: string, notes?: string) {
     const task = await this.findOne(id, user);
 
-    const allowed = ALLOWED_TRANSITIONS[task.status] || [];
-    if (!allowed.includes(newStatus)) {
-      throw new BadRequestException(
-        `Invalid status transition from "${task.status}" to "${newStatus}". Canonical state rules permit: ${allowed.join(', ') || 'none'}`,
-      );
-    }
+    // 1. Authorize operation against actor role and task
+    const authContext = await this.taskPolicyService.authorize(user, task, 'update_status');
+
+    // 2. Validate canonical transition and role permissions
+    this.taskPolicyService.validateTransition(task.status, newStatus, authContext.role);
+
+    // 3. Validate preconditions (e.g., evidence for completion)
+    await this.taskPolicyService.validateVerificationPreconditions(id, newStatus, notes);
 
     let timestampUpdate = '';
     if (newStatus === 'en_route') {
       timestampUpdate = ', en_route_at = COALESCE(en_route_at, now())';
     } else if (newStatus === 'on_site') {
       timestampUpdate = ', on_site_at = COALESCE(on_site_at, now())';
-    } else if (newStatus === 'completed' || newStatus === 'closed') {
+    } else if (newStatus === 'completed' || newStatus === 'verification_pending') {
       timestampUpdate = ', completed_at = COALESCE(completed_at, now())';
     }
 
@@ -278,15 +277,26 @@ export class TasksService {
       [newStatus, id]
     );
 
+    // Also update job_assignments if vendor is performing transition
+    if (authContext.vendorId) {
+      if (newStatus === 'en_route') {
+        await query(`UPDATE job_assignments SET en_route_at = COALESCE(en_route_at, now()) WHERE job_id = $1 AND vendor_id = $2`, [id, authContext.vendorId]);
+      } else if (newStatus === 'on_site') {
+        await query(`UPDATE job_assignments SET on_site_at = COALESCE(on_site_at, now()) WHERE job_id = $1 AND vendor_id = $2`, [id, authContext.vendorId]);
+      } else if (newStatus === 'completed' || newStatus === 'verification_pending') {
+        await query(`UPDATE job_assignments SET completed_at = COALESCE(completed_at, now()) WHERE job_id = $1 AND vendor_id = $2`, [id, authContext.vendorId]);
+      }
+    }
+
     await this.auditService.recordEvent({
-      actorType: user.isAdmin ? 'admin' : user.isVendor ? 'vendor' : 'pm',
+      actorType: authContext.role,
       actorUserId: user.sub,
       targetType: 'job',
       targetId: id,
       category: 'task',
       eventType: 'task.status_changed',
       summary: `Task ${task.job_code} transitioned from ${task.status} to ${newStatus}`,
-      metadata: { oldStatus: task.status, newStatus },
+      metadata: { oldStatus: task.status, newStatus, actorRole: authContext.role, notes },
     });
 
     return res.rows[0];
@@ -294,17 +304,20 @@ export class TasksService {
 
   async remove(id: string, user: JwtPayload) {
     const task = await this.findOne(id, user);
-    
-    // Only admins or PMs in the same org can delete
-    if (user.activeOrganizationId && task.organization_id !== user.activeOrganizationId && !user.isAdmin) {
-      throw new ForbiddenException('Not authorized to delete this task');
+
+    // Authorize cancellation
+    const authContext = await this.taskPolicyService.authorize(user, task, 'cancel');
+
+    // Only allow cancellation if status is not already completed, closed, or cancelled
+    if (['completed', 'closed', 'cancelled'].includes(task.status)) {
+      throw new BadRequestException(`Cannot cancel task ${task.job_code}: current status is already "${task.status}"`);
     }
 
     // Canonical architecture: Preserve Task history; avoid destructive deletion of operational records
     await query(`UPDATE jobs SET status = 'cancelled', updated_at = now() WHERE id = $1`, [id]);
     
     await this.auditService.recordEvent({
-      actorType: user.isAdmin ? 'admin' : 'pm',
+      actorType: authContext.role,
       actorUserId: user.sub,
       targetType: 'job',
       targetId: id,
@@ -317,7 +330,9 @@ export class TasksService {
   }
 
   async getEvidence(jobId: string, user: JwtPayload) {
-    await this.findOne(jobId, user);
+    const task = await this.findOne(jobId, user);
+    await this.taskPolicyService.authorize(user, task, 'view_evidence');
+
     const res = await query(
       `SELECT je.*, u.full_name AS uploaded_by_name, v.display_name AS vendor_name
        FROM job_evidence je
@@ -339,9 +354,10 @@ export class TasksService {
     vendorId?: string;
   }) {
     const task = await this.findOne(jobId, user);
+    const authContext = await this.taskPolicyService.authorize(user, task, 'add_evidence');
     
     // Resolve vendor if actor is vendor
-    let vendorId = data.vendorId || null;
+    let vendorId = data.vendorId || authContext.vendorId || null;
     if (!vendorId && user.isVendor) {
       const vRes = await query(`SELECT id FROM vendors WHERE user_id = $1 LIMIT 1`, [user.sub]);
       if (vRes.rows.length > 0) vendorId = vRes.rows[0].id;
@@ -367,7 +383,7 @@ export class TasksService {
     const evidence = res.rows[0];
 
     await this.auditService.recordEvent({
-      actorType: user.isAdmin ? 'admin' : user.isVendor ? 'vendor' : 'pm',
+      actorType: authContext.role,
       actorUserId: user.sub,
       targetType: 'job',
       targetId: jobId,
@@ -382,6 +398,16 @@ export class TasksService {
 
   async verify(jobId: string, user: JwtPayload, data: { decision: 'approve' | 'rework'; reworkReason?: string }) {
     const task = await this.findOne(jobId, user);
+
+    // 1. Authorize PM verification
+    await this.taskPolicyService.authorize(user, task, 'pm_verify');
+
+    // 2. Precondition: task must be awaiting verification or completed
+    if (task.status !== 'verification_pending' && task.status !== 'completed') {
+      throw new BadRequestException(
+        `Cannot verify task ${task.job_code}: current status is "${task.status}". Only tasks in "verification_pending" or "completed" can be verified.`
+      );
+    }
 
     if (data.decision === 'approve') {
       const res = await query(
@@ -404,8 +430,8 @@ export class TasksService {
 
       return { status: 'closed', task: res.rows[0] };
     } else {
-      if (!data.reworkReason) {
-        throw new BadRequestException('A reason is required when rejecting work for rework');
+      if (!data.reworkReason || data.reworkReason.trim().length === 0) {
+        throw new BadRequestException('A non-empty reason is required when rejecting work for rework');
       }
 
       // Canonical architecture: ordinary rework normally remains on the original Task

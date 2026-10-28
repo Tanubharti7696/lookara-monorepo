@@ -346,39 +346,53 @@ export class DashboardService {
       });
     }
 
-    // Default compliance / turn recommendation
-    nextBestActions.push({
-      id: 'recommendation-3',
-      type: 'compliance_due',
-      title: 'Review Verification Queue',
-      description: `${approvals.workVerificationsPending} completed task(s) awaiting sign-off`,
-      confidence: 'medium',
-      affectedCount: approvals.workVerificationsPending,
-      action: {
-        type: 'open_task_queue',
-        entityId: null,
-        filters: { status: 'verification_pending' },
-      },
-    });
+    // Recommendation: Only show Review Verification Queue if there are tasks awaiting verification
+    if (approvals.workVerificationsPending > 0) {
+      nextBestActions.push({
+        id: 'recommendation-3',
+        type: 'work_verification',
+        title: 'Review Verification Queue',
+        description: `${approvals.workVerificationsPending} completed task(s) awaiting sign-off`,
+        confidence: 'medium',
+        affectedCount: approvals.workVerificationsPending,
+        action: {
+          type: 'open_task_queue',
+          entityId: null,
+          filters: { status: 'verification_pending' },
+        },
+      });
+    }
 
-    // 8. Recent Activity (Audit events up to 5)
+    // 8. Recent Activity (Audit events up to 5, excluding authentication events)
     let activitySql = `
       SELECT id, category, event_type, summary, created_at, target_id
       FROM audit_events
-      WHERE true
+      WHERE category IN ('dispatch', 'sla', 'compliance', 'vendor', 'task')
+    `;
+    let activityCountSql = `
+      SELECT count(*) as total
+      FROM audit_events
+      WHERE category IN ('dispatch', 'sla', 'compliance', 'vendor', 'task')
     `;
     const activityParams: any[] = [];
     if (orgId) {
-      activitySql += ` AND (
+      const orgClause = ` AND (
         target_id IN (SELECT id FROM jobs WHERE organization_id = $1::uuid)
         OR target_id IN (SELECT id FROM properties WHERE organization_id = $1::uuid)
         OR target_id = $1::uuid
       )`;
+      activitySql += orgClause;
+      activityCountSql += orgClause;
       activityParams.push(orgId);
     }
     activitySql += ` ORDER BY created_at DESC LIMIT 5`;
 
-    const activityRes = await query(activitySql, activityParams);
+    const [activityRes, activityTotalRes] = await Promise.all([
+      query(activitySql, activityParams),
+      query(activityCountSql, activityParams),
+    ]);
+
+    const totalActivityEvents = parseInt(activityTotalRes.rows[0]?.total || '0', 10);
 
     const recentActivityItems = activityRes.rows.map((row: any) => ({
       id: row.id,
@@ -413,8 +427,8 @@ export class DashboardService {
         nextBestActions,
         recentActivity: {
           items: recentActivityItems,
-          total: recentActivityItems.length,
-          hasMore: false,
+          total: totalActivityEvents,
+          hasMore: totalActivityEvents > recentActivityItems.length,
         },
       },
       meta: {

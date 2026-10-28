@@ -55,8 +55,9 @@ export class TasksController {
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
     @Body('status') newStatus: string,
+    @Body('notes') notes?: string,
   ) {
-    return this.tasksService.updateStatus(id, user, newStatus);
+    return this.tasksService.updateStatus(id, user, newStatus, notes);
   }
 
   @Delete(':id')

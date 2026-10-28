@@ -2,10 +2,14 @@ import { Injectable, ForbiddenException, NotFoundException, BadRequestException 
 import { query } from '@lookara/database';
 import type { JwtPayload } from '@lookara/auth';
 import { AuditService } from '../audit/audit.service';
+import { TasksService } from '../tasks/tasks.service';
 
 @Injectable()
 export class VendorsService {
-  constructor(private readonly auditService: AuditService) {}
+  constructor(
+    private readonly auditService: AuditService,
+    private readonly tasksService: TasksService,
+  ) {}
 
   async findAll(user: JwtPayload) {
     const orgId = user.activeOrganizationId;
@@ -262,68 +266,13 @@ export class VendorsService {
 
   /**
    * Update execution status of job (en_route, on_site, in_progress, verification_pending, completed)
+   * Delegates to TasksService to guarantee centralized policy, canonical state validation, and audit logging.
    */
   async updateJobExecution(
     jobId: string,
     user: JwtPayload,
     body: { status: 'en_route' | 'on_site' | 'in_progress' | 'verification_pending' | 'completed'; notes?: string }
   ) {
-    const vendorId = await this.getVendorIdForUser(user);
-
-    const assignRes = await query(
-      `SELECT * FROM job_assignments WHERE job_id = $1 AND vendor_id = $2 LIMIT 1`,
-      [jobId, vendorId]
-    );
-    if (assignRes.rows.length === 0) {
-      throw new ForbiddenException('Job is not assigned to this vendor');
-    }
-
-    const jobRes = await query(`SELECT * FROM jobs WHERE id = $1`, [jobId]);
-    if (jobRes.rows.length === 0) throw new NotFoundException('Job not found');
-    const job = jobRes.rows[0];
-
-    // If moving to completed / verification_pending, check if evidence exists
-    if (body.status === 'verification_pending' || body.status === 'completed') {
-      const evCheck = await query(`SELECT count(*) as count FROM job_evidence WHERE job_id = $1`, [jobId]);
-      const count = parseInt(evCheck.rows[0].count, 10);
-      if (count === 0 && !body.notes) {
-        throw new BadRequestException('Completion evidence (photo or notes) must be provided before marking complete');
-      }
-    }
-
-    if (body.status === 'en_route') {
-      await query(`UPDATE job_assignments SET en_route_at = COALESCE(en_route_at, now()) WHERE id = $1`, [assignRes.rows[0].id]);
-    } else if (body.status === 'on_site') {
-      await query(`UPDATE job_assignments SET on_site_at = COALESCE(on_site_at, now()) WHERE id = $1`, [assignRes.rows[0].id]);
-    } else if (body.status === 'completed' || body.status === 'verification_pending') {
-      await query(`UPDATE job_assignments SET completed_at = COALESCE(completed_at, now()) WHERE id = $1`, [assignRes.rows[0].id]);
-    }
-
-    let timestampJobUpdate = '';
-    if (body.status === 'en_route') {
-      timestampJobUpdate = ', en_route_at = COALESCE(en_route_at, now())';
-    } else if (body.status === 'on_site') {
-      timestampJobUpdate = ', on_site_at = COALESCE(on_site_at, now())';
-    } else if (body.status === 'completed' || body.status === 'verification_pending') {
-      timestampJobUpdate = ', completed_at = COALESCE(completed_at, now())';
-    }
-
-    const updatedJob = await query(
-      `UPDATE jobs SET status = $1, updated_at = now()${timestampJobUpdate} WHERE id = $2 RETURNING *`,
-      [body.status, jobId]
-    );
-
-    await this.auditService.recordEvent({
-      actorType: 'vendor',
-      actorUserId: user.sub,
-      targetType: 'job',
-      targetId: jobId,
-      category: 'task',
-      eventType: `task.execution_${body.status}`,
-      summary: `Vendor updated execution status of Job ${job.job_code} to ${body.status}`,
-      metadata: { vendorId, newStatus: body.status, notes: body.notes },
-    });
-
-    return updatedJob.rows[0];
+    return this.tasksService.updateStatus(jobId, user, body.status, body.notes);
   }
 }

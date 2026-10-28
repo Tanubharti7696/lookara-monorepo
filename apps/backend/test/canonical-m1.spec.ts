@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TasksService } from '../src/tasks/tasks.service';
+import { TaskPolicyService } from '../src/tasks/task-policy.service';
 import { DispatchService } from '../src/dispatch/dispatch.service';
 import { AuditService } from '../src/audit/audit.service';
 import { BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
@@ -15,6 +16,7 @@ vi.mock('@lookara/database', () => {
 
 describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests', () => {
   let tasksService: TasksService;
+  let taskPolicyService: TaskPolicyService;
   let dispatchService: DispatchService;
   let auditService: AuditService;
 
@@ -32,7 +34,8 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
     vi.clearAllMocks();
     auditService = new AuditService();
     vi.spyOn(auditService, 'recordEvent').mockResolvedValue(undefined as any);
-    tasksService = new TasksService(auditService);
+    taskPolicyService = new TaskPolicyService();
+    tasksService = new TasksService(auditService, taskPolicyService);
     dispatchService = new DispatchService(auditService);
   });
 
@@ -172,40 +175,71 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
 
   describe('3. Execution Lifecycle: En Route and On Site Transitions', () => {
     it('should transition accepted -> en_route -> on_site -> in_progress and record execution timestamps', async () => {
+      const mockVendorUser = {
+        sub: 'user-vendor-1',
+        email: 'vendor@lookara.test',
+        roles: ['vendor'],
+        isAdmin: false,
+        isOwner: false,
+        isVendor: true,
+        activePortal: 'vendor',
+      };
+
       // 1. accepted -> en_route
       vi.mocked(db.query)
+        // findOne
         .mockResolvedValueOnce({
-          rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'accepted' }],
+          rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'accepted', property_id: 'prop-1' }],
         } as any)
+        // getVendorIdForUser
+        .mockResolvedValueOnce({ rows: [{ id: 'vendor-1' }] } as any)
+        // isVendorAssignedToTask
+        .mockResolvedValueOnce({ rows: [{ id: 'assign-1' }] } as any)
+        // updateStatus: getVendorIdForUser
+        .mockResolvedValueOnce({ rows: [{ id: 'vendor-1' }] } as any)
+        // updateStatus: isVendorAssignedToTask
+        .mockResolvedValueOnce({ rows: [{ id: 'assign-1' }] } as any)
+        // UPDATE jobs
         .mockResolvedValueOnce({
           rows: [{ id: 'task-1', status: 'en_route', en_route_at: new Date() }],
-        } as any);
+        } as any)
+        // UPDATE job_assignments
+        .mockResolvedValueOnce({} as any);
 
-      const res1 = await tasksService.updateStatus('task-1', mockUser as any, 'en_route');
+      const res1 = await tasksService.updateStatus('task-1', mockVendorUser as any, 'en_route');
       expect(res1.status).toBe('en_route');
 
       // 2. en_route -> on_site
       vi.mocked(db.query)
         .mockResolvedValueOnce({
-          rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'en_route' }],
+          rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'en_route', property_id: 'prop-1' }],
         } as any)
+        .mockResolvedValueOnce({ rows: [{ id: 'vendor-1' }] } as any)
+        .mockResolvedValueOnce({ rows: [{ id: 'assign-1' }] } as any)
+        .mockResolvedValueOnce({ rows: [{ id: 'vendor-1' }] } as any)
+        .mockResolvedValueOnce({ rows: [{ id: 'assign-1' }] } as any)
         .mockResolvedValueOnce({
           rows: [{ id: 'task-1', status: 'on_site', on_site_at: new Date() }],
-        } as any);
+        } as any)
+        .mockResolvedValueOnce({} as any);
 
-      const res2 = await tasksService.updateStatus('task-1', mockUser as any, 'on_site');
+      const res2 = await tasksService.updateStatus('task-1', mockVendorUser as any, 'on_site');
       expect(res2.status).toBe('on_site');
 
       // 3. on_site -> in_progress
       vi.mocked(db.query)
         .mockResolvedValueOnce({
-          rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'on_site' }],
+          rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'on_site', property_id: 'prop-1' }],
         } as any)
+        .mockResolvedValueOnce({ rows: [{ id: 'vendor-1' }] } as any)
+        .mockResolvedValueOnce({ rows: [{ id: 'assign-1' }] } as any)
+        .mockResolvedValueOnce({ rows: [{ id: 'vendor-1' }] } as any)
+        .mockResolvedValueOnce({ rows: [{ id: 'assign-1' }] } as any)
         .mockResolvedValueOnce({
           rows: [{ id: 'task-1', status: 'in_progress' }],
         } as any);
 
-      const res3 = await tasksService.updateStatus('task-1', mockUser as any, 'in_progress');
+      const res3 = await tasksService.updateStatus('task-1', mockVendorUser as any, 'in_progress');
       expect(res3.status).toBe('in_progress');
     });
   });
