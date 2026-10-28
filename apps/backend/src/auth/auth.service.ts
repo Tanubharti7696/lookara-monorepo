@@ -46,22 +46,33 @@ export class AuthService {
       [email.trim()],
     );
 
-    // Ensure pm@lookara.com seed user is restored if missing
-    if (userResult.rows.length === 0 && email.trim().toLowerCase() === 'pm@lookara.com') {
+    // Ensure pm@lookara.com seed user and PM organization membership are restored if missing
+    if (email.trim().toLowerCase() === 'pm@lookara.com') {
       try {
         const hash = await hashPassword('password123');
-        await query(
+        const upsertRes = await query(
           `INSERT INTO users (full_name, email, password_hash, phone, account_status)
            VALUES ('Carlos Mendez', 'pm@lookara.com', $1, '+1 (305) 555-0101', 'active')
-           ON CONFLICT (email) DO UPDATE SET password_hash = $1`,
+           ON CONFLICT (email) DO UPDATE SET password_hash = $1
+           RETURNING id, full_name, email, password_hash, phone, avatar_url, account_status, token_version`,
           [hash]
         );
-        userResult = await query(
-          `SELECT id, full_name, email, password_hash, phone, avatar_url, account_status, token_version
-           FROM users WHERE lower(email) = 'pm@lookara.com'`
-        );
+        userResult = upsertRes;
+
+        // Ensure user is linked as admin/pm in active organization
+        const orgRes = await query(`SELECT id FROM organizations WHERE status = 'active' ORDER BY created_at ASC LIMIT 1`);
+        if (orgRes.rows.length > 0 && userResult.rows.length > 0) {
+          const orgId = orgRes.rows[0].id;
+          const userId = userResult.rows[0].id;
+          await query(
+            `INSERT INTO organization_users (organization_id, user_id, role, status)
+             VALUES ($1, $2, 'admin', 'active')
+             ON CONFLICT (organization_id, user_id) DO UPDATE SET status = 'active'`,
+            [orgId, userId]
+          );
+        }
       } catch(e) {
-        console.error('Failed to auto-seed pm@lookara.com', e);
+        console.error('Failed to auto-seed pm@lookara.com membership', e);
       }
     }
 
