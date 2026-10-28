@@ -11,9 +11,19 @@ export class PropertiesController {
 
   @Get('debug')
   debugEnv() {
+    let dbHost = null;
+    let dbName = null;
+    try {
+      if (process.env.DATABASE_URL) {
+        const u = new URL(process.env.DATABASE_URL);
+        dbHost = u.hostname;
+        dbName = u.pathname;
+      }
+    } catch (e) {}
     return {
       hasDb: !!process.env.DATABASE_URL,
-      dbVal: process.env.DATABASE_URL ? process.env.DATABASE_URL.substring(0, 15) + '...' : null,
+      dbHost,
+      dbName,
     };
   }
 
