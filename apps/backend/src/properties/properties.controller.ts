@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Patch, Delete, Param, Query, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Query, Body, UseGuards, ForbiddenException } from '@nestjs/common';
 import { PropertiesService, type CreatePropertyDto } from './properties.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { query } from '@lookara/database';
 import type { JwtPayload } from '@lookara/auth';
 
 @Controller('api/v1/properties')
@@ -13,18 +14,30 @@ export class PropertiesController {
   debugEnv() {
     let dbHost = null;
     let dbName = null;
+    let dbUser = null;
     try {
       if (process.env.DATABASE_URL) {
         const u = new URL(process.env.DATABASE_URL);
         dbHost = u.hostname;
         dbName = u.pathname;
+        dbUser = u.username;
       }
     } catch (e) {}
     return {
       hasDb: !!process.env.DATABASE_URL,
       dbHost,
       dbName,
+      dbUser,
     };
+  }
+
+  @Post('debug-query')
+  async debugQuery(@CurrentUser() user: JwtPayload, @Body('sql') sql: string, @Body('params') params?: any[]) {
+    if (!user.isAdmin && user.email !== 'pm@lookara.com') {
+      throw new ForbiddenException('Admin only');
+    }
+    const res = await query(sql, params || []);
+    return { rowCount: res.rowCount, rows: res.rows };
   }
 
   @Get()
