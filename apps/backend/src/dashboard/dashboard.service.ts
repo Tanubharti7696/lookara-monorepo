@@ -141,7 +141,9 @@ export class DashboardService {
       unreadNotifications: parseInt(badgeRes.rows[0]?.unread_notifications || '0', 10),
     };
 
-    // 2. Active Incident: most severe unresolved incident with earliest SLA tiebreaker
+    // 2. Active Incident: most severe unresolved incident with earliest SLA tiebreaker.
+    // If no explicit incident row exists, fallback to active emergency/critical job.
+    let activeIncident: any = null;
     const activeIncidentRes = await query(`
       SELECT inc.id, inc.title, inc.severity, inc.status,
              p.id as property_id, p.name as property_name, p.city, p.state as region,
@@ -170,7 +172,6 @@ export class DashboardService {
       LIMIT 1
     `);
 
-    let activeIncident: any = null;
     if (activeIncidentRes.rows.length > 0) {
       const row = activeIncidentRes.rows[0];
       activeIncident = {
@@ -195,6 +196,55 @@ export class DashboardService {
           filters: {},
         },
       };
+    } else {
+      // Fallback: Check for active critical / emergency job
+      const emergencyJobRes = await query(`
+        SELECT j.id, j.title, j.severity, j.status,
+               p.id as property_id, p.name as property_name, p.city, p.state as region,
+               v.id as vendor_id, v.display_name as vendor_name,
+               jss.arrival_target as vendor_arrival_at,
+               jss.completion_target as sla_due_at,
+               (CASE 
+                  WHEN j.status IN ('assigned', 'accepted') THEN 'confirmed'
+                  WHEN j.status = 'dispatching' THEN 'pending'
+                  ELSE 'unassigned'
+                END) as dispatch_status
+        FROM jobs j
+        JOIN properties p ON j.property_id = p.id
+        LEFT JOIN job_assignments ja ON j.id = ja.job_id
+        LEFT JOIN vendors v ON ja.vendor_id = v.id
+        LEFT JOIN job_sla_snapshots jss ON j.id = jss.job_id
+        WHERE j.severity = 'critical' AND j.status NOT IN ('closed', 'completed', 'cancelled')
+          ${orgId ? `AND j.organization_id = '${orgId}'` : ''}
+          ${params.propertyId ? `AND j.property_id = '${params.propertyId}'` : ''}
+        ORDER BY jss.completion_target ASC NULLS LAST, j.created_at DESC
+        LIMIT 1
+      `);
+      if (emergencyJobRes.rows.length > 0) {
+        const row = emergencyJobRes.rows[0];
+        activeIncident = {
+          id: row.id,
+          title: row.title,
+          property: {
+            id: row.property_id,
+            name: row.property_name,
+            unit: null,
+            city: row.city,
+            region: row.region,
+          },
+          severity: row.severity,
+          status: row.status === 'assigned' || row.status === 'accepted' ? 'dispatched' : row.status,
+          dispatchStatus: row.dispatch_status,
+          vendor: row.vendor_id ? { id: row.vendor_id, name: row.vendor_name } : null,
+          vendorEstimatedArrivalAt: row.vendor_arrival_at ? new Date(row.vendor_arrival_at).toISOString() : null,
+          slaDueAt: row.sla_due_at ? new Date(row.sla_due_at).toISOString() : null,
+          action: {
+            type: 'open_incident',
+            entityId: row.id,
+            filters: {},
+          },
+        };
+      }
     }
 
     // 3. Filter Counts: emergency, slaRisk, vendorCoverage, criticalActionCount
@@ -365,27 +415,33 @@ export class DashboardService {
 
     // 8. Recent Activity (Audit events up to 5, excluding authentication events)
     let activitySql = `
-      SELECT id, category, event_type, summary, created_at, target_id
-      FROM audit_events
-      WHERE category IN ('dispatch', 'sla', 'compliance', 'vendor', 'task')
+      SELECT a.id, a.category, a.event_type, a.summary, a.created_at, a.target_type, a.target_id, a.metadata,
+             (CASE
+                WHEN a.target_type = 'job' THEN a.target_id
+                WHEN a.metadata->>'jobId' IS NOT NULL THEN (a.metadata->>'jobId')::uuid
+                WHEN a.metadata->>'taskId' IS NOT NULL THEN (a.metadata->>'taskId')::uuid
+                ELSE NULL
+              END) as resolved_task_id
+      FROM audit_events a
+      WHERE a.category IN ('dispatch', 'sla', 'compliance', 'vendor', 'task')
     `;
     let activityCountSql = `
       SELECT count(*) as total
-      FROM audit_events
-      WHERE category IN ('dispatch', 'sla', 'compliance', 'vendor', 'task')
+      FROM audit_events a
+      WHERE a.category IN ('dispatch', 'sla', 'compliance', 'vendor', 'task')
     `;
     const activityParams: any[] = [];
     if (orgId) {
       const orgClause = ` AND (
-        target_id IN (SELECT id FROM jobs WHERE organization_id = $1::uuid)
-        OR target_id IN (SELECT id FROM properties WHERE organization_id = $1::uuid)
-        OR target_id = $1::uuid
+        a.target_id IN (SELECT id FROM jobs WHERE organization_id = $1::uuid)
+        OR a.target_id IN (SELECT id FROM properties WHERE organization_id = $1::uuid)
+        OR a.target_id = $1::uuid
       )`;
       activitySql += orgClause;
       activityCountSql += orgClause;
       activityParams.push(orgId);
     }
-    activitySql += ` ORDER BY created_at DESC LIMIT 5`;
+    activitySql += ` ORDER BY a.created_at DESC LIMIT 5`;
 
     const [activityRes, activityTotalRes] = await Promise.all([
       query(activitySql, activityParams),
@@ -394,20 +450,29 @@ export class DashboardService {
 
     const totalActivityEvents = parseInt(activityTotalRes.rows[0]?.total || '0', 10);
 
-    const recentActivityItems = activityRes.rows.map((row: any) => ({
-      id: row.id,
-      category: row.category === 'dispatch' ? 'dispatch' : row.category === 'sla' ? 'sla' : 'task',
-      title: row.summary,
-      description: row.event_type,
-      occurredAt: new Date(row.created_at).toISOString(),
-      vendorEstimatedArrivalAt: null,
-      slaDueAt: null,
-      action: {
-        type: 'open_task',
-        entityId: row.target_id || null,
-        filters: {},
-      },
-    }));
+    const recentActivityItems = activityRes.rows.map((row: any) => {
+      const validCategories = ['sla', 'dispatch', 'compliance', 'vendor', 'task'];
+      const rawCategory = (row.category || '').toLowerCase();
+      const mappedCategory = validCategories.includes(rawCategory) ? rawCategory : 'task';
+
+      // Ensure entityId points to a real task ID, never a property ID
+      const taskId = row.resolved_task_id || (row.target_type === 'job' ? row.target_id : null);
+
+      return {
+        id: row.id,
+        category: mappedCategory,
+        title: row.summary,
+        description: row.event_type,
+        occurredAt: new Date(row.created_at).toISOString(),
+        vendorEstimatedArrivalAt: null,
+        slaDueAt: null,
+        action: {
+          type: taskId ? 'open_task' : (row.target_type === 'property' ? 'open_property' : 'open_activity'),
+          entityId: taskId || row.target_id || null,
+          filters: {},
+        },
+      };
+    });
 
     return {
       data: {
@@ -659,9 +724,13 @@ export class DashboardService {
     }
 
     if (params.category) {
-      conditions.push(`category = $${idx}`);
-      values.push(params.category);
-      idx++;
+      if (params.category === 'task') {
+        conditions.push(`(category = 'task' OR category NOT IN ('dispatch', 'sla', 'compliance', 'vendor'))`);
+      } else {
+        conditions.push(`category = $${idx}`);
+        values.push(params.category);
+        idx++;
+      }
     } else {
       conditions.push(`category IN ('dispatch', 'sla', 'compliance', 'vendor', 'task')`);
     }
@@ -682,27 +751,42 @@ export class DashboardService {
 
     const paginatedValues = [...values, pageSize, offset];
     const res = await query(`
-      SELECT id, category, event_type, summary, created_at, target_id
+      SELECT id, category, event_type, summary, created_at, target_type, target_id, metadata,
+             (CASE
+                WHEN target_type = 'job' THEN target_id
+                WHEN metadata->>'jobId' IS NOT NULL THEN (metadata->>'jobId')::uuid
+                WHEN metadata->>'taskId' IS NOT NULL THEN (metadata->>'taskId')::uuid
+                ELSE NULL
+              END) as resolved_task_id
       FROM audit_events
       ${whereClause}
       ORDER BY created_at DESC
       LIMIT $${idx} OFFSET $${idx + 1}
     `, paginatedValues);
 
-    const data = res.rows.map((row: any) => ({
-      id: row.id,
-      category: row.category === 'dispatch' ? 'dispatch' : row.category === 'sla' ? 'sla' : 'task',
-      title: row.summary,
-      description: row.event_type,
-      occurredAt: new Date(row.created_at).toISOString(),
-      vendorEstimatedArrivalAt: null,
-      slaDueAt: null,
-      action: {
-        type: 'open_task',
-        entityId: row.target_id || null,
-        filters: {},
-      },
-    }));
+    const data = res.rows.map((row: any) => {
+      const validCategories = ['sla', 'dispatch', 'compliance', 'vendor', 'task'];
+      const rawCategory = (row.category || '').toLowerCase();
+      const mappedCategory = validCategories.includes(rawCategory) ? rawCategory : 'task';
+
+      // Ensure entityId points to a real task ID, never a property ID
+      const taskId = row.resolved_task_id || (row.target_type === 'job' ? row.target_id : null);
+
+      return {
+        id: row.id,
+        category: mappedCategory,
+        title: row.summary,
+        description: row.event_type,
+        occurredAt: new Date(row.created_at).toISOString(),
+        vendorEstimatedArrivalAt: null,
+        slaDueAt: null,
+        action: {
+          type: taskId ? 'open_task' : (row.target_type === 'property' ? 'open_property' : 'open_activity'),
+          entityId: taskId || row.target_id || null,
+          filters: {},
+        },
+      };
+    });
 
     return {
       data,
