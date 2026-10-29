@@ -244,8 +244,8 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
     });
   });
 
-  describe('4. SLA Clocks & 4-Tier Hierarchy Snapshotting', () => {
-    it('should snapshot 4 operational targets according to hierarchical resolution', async () => {
+  describe('4. SLA Clocks & 5-Tier Hierarchy Snapshotting', () => {
+    it('should snapshot 4 operational targets according to hierarchical resolution (Market Tier)', async () => {
       // Mock create task queries
       vi.mocked(db.query)
         .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any) // Property check
@@ -261,6 +261,7 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
             acknowledge_mins: 15,
             arrival_mins: 60,
             completion_mins: 180,
+            escalation_mins: 30,
             verification_mins: 60,
           }],
         } as any) // Market SLA matched!
@@ -278,6 +279,41 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
 
       expect(task.id).toBe('task-1');
       expect(task.job_code).toBe('JOB-200');
+
+      // Verify snapshot query included escalation_target and resolved_tier
+      const snapshotCall = vi.mocked(db.query).mock.calls[5];
+      expect(snapshotCall[0]).toContain('escalation_target');
+      expect(snapshotCall[0]).toContain('resolved_tier');
+      expect(snapshotCall[1][7]).toBe('market');
+    });
+
+    it('should respect Task-level SLA override with highest priority', async () => {
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-2', job_code: 'JOB-201', organization_id: 'org-1', property_id: 'prop-1', severity: 'critical', title: 'Overridden SLA Task' }],
+        } as any)
+        .mockResolvedValueOnce({ rows: [] } as any); // Snapshot insert
+
+      const task = await tasksService.create(mockUser as any, {
+        propertyId: 'prop-1',
+        tradeCode: 'ELEC',
+        workflowClass: 'maintenance',
+        severity: 'critical',
+        source: 'pm_portal',
+        title: 'Overridden SLA Task',
+        serviceType: 'emergency',
+        slaOverride: {
+          acknowledgeMins: 10,
+          arrivalMins: 30,
+          completionMins: 90,
+          escalationMins: 20,
+        },
+      });
+
+      expect(task.id).toBe('task-2');
+      const snapshotCall = vi.mocked(db.query).mock.calls[2];
+      expect(snapshotCall[1][7]).toBe('task_override');
     });
   });
 });

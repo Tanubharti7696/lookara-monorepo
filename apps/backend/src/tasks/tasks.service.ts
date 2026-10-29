@@ -19,6 +19,12 @@ export interface CreateTaskDto {
   payoutAmount?: number;
   scheduledStart?: string;
   estimatedDurationMinutes?: number;
+  slaOverride?: {
+    acknowledgeMins?: number;
+    arrivalMins?: number;
+    completionMins?: number;
+    escalationMins?: number;
+  };
 }
 
 @Injectable()
@@ -164,76 +170,157 @@ export class TasksService {
     ]);
     const task = res.rows[0];
 
-    // Canonical SLA Snapshotting Hierarchy (Property Override -> Market Tier -> Org Tier -> Lookara Default)
+    // Canonical SLA Snapshotting Hierarchy:
+    // Task-level Override -> Property Override -> Market Tier -> Org Tier -> Lookara Base Default
+    // Operational clocks: Response (Acknowledge), Arrival, Completion, Escalation
     const sev = dto.severity || 'low';
-    
-    // 1. Property Override SLA
-    let slaRes = await query(
-      `SELECT st.* FROM sla_templates st
-       JOIN property_sla_overrides pso ON st.id = pso.sla_template_id
-       WHERE pso.property_id = $1 LIMIT 1`,
-      [dto.propertyId]
-    );
+    let resolvedTier = 'lookara_base';
+    let sla: {
+      id: string | null;
+      acknowledge_mins: number;
+      arrival_mins: number;
+      completion_mins: number;
+      escalation_mins: number;
+      verification_mins?: number;
+    } | null = null;
 
-    // 2. Market-level SLA (based on property market/city)
-    if (slaRes.rows.length === 0) {
+    // 1. Task-level Override (Highest priority)
+    if (dto.slaOverride) {
+      resolvedTier = 'task_override';
+      sla = {
+        id: null,
+        acknowledge_mins: dto.slaOverride.acknowledgeMins || (sev === 'critical' ? 15 : sev === 'high' ? 30 : 60),
+        arrival_mins: dto.slaOverride.arrivalMins || (sev === 'critical' ? 60 : sev === 'high' ? 120 : 240),
+        completion_mins: dto.slaOverride.completionMins || (sev === 'critical' ? 240 : sev === 'high' ? 480 : 1440),
+        escalation_mins: dto.slaOverride.escalationMins || (sev === 'critical' ? 30 : sev === 'high' ? 60 : 120),
+        verification_mins: 120,
+      };
+    }
+
+    // 2. Property Override SLA
+    if (!sla && dto.propertyId) {
+      const propOverrideRes = await query(
+        `SELECT st.* FROM sla_templates st
+         JOIN property_sla_overrides pso ON st.id = pso.sla_template_id
+         WHERE pso.property_id = $1 LIMIT 1`,
+        [dto.propertyId]
+      );
+      if (propOverrideRes.rows.length > 0) {
+        resolvedTier = 'property';
+        const row = propOverrideRes.rows[0];
+        sla = {
+          id: row.id,
+          acknowledge_mins: row.acknowledge_mins,
+          arrival_mins: row.arrival_mins,
+          completion_mins: row.completion_mins,
+          escalation_mins: row.escalation_mins || (sev === 'critical' ? 30 : sev === 'high' ? 60 : 120),
+          verification_mins: row.verification_mins || 120,
+        };
+      }
+    }
+
+    // 3. Market-level SLA (based on property market/city)
+    if (!sla && dto.propertyId) {
       const propMarketRes = await query(`SELECT market, city FROM properties WHERE id = $1`, [dto.propertyId]);
       const marketVal = propMarketRes.rows[0]?.market || propMarketRes.rows[0]?.city;
       if (marketVal) {
-        slaRes = await query(
+        const marketSlaRes = await query(
           `SELECT * FROM sla_templates 
            WHERE market = $1 AND severity = $2 
            ORDER BY created_at DESC LIMIT 1`,
           [marketVal, sev]
         );
+        if (marketSlaRes.rows.length > 0) {
+          resolvedTier = 'market';
+          const row = marketSlaRes.rows[0];
+          sla = {
+            id: row.id,
+            acknowledge_mins: row.acknowledge_mins,
+            arrival_mins: row.arrival_mins,
+            completion_mins: row.completion_mins,
+            escalation_mins: row.escalation_mins || (sev === 'critical' ? 30 : sev === 'high' ? 60 : 120),
+            verification_mins: row.verification_mins || 120,
+          };
+        }
       }
     }
 
-    // 3. Organization-level SLA
-    if (slaRes.rows.length === 0) {
-      slaRes = await query(
+    // 4. Organization-level SLA
+    if (!sla && orgId) {
+      const orgSlaRes = await query(
         `SELECT * FROM sla_templates 
          WHERE organization_id = $1 AND severity = $2 
          ORDER BY created_at DESC LIMIT 1`,
         [orgId, sev]
       );
+      if (orgSlaRes.rows.length > 0) {
+        resolvedTier = 'organization';
+        const row = orgSlaRes.rows[0];
+        sla = {
+          id: row.id,
+          acknowledge_mins: row.acknowledge_mins,
+          arrival_mins: row.arrival_mins,
+          completion_mins: row.completion_mins,
+          escalation_mins: row.escalation_mins || (sev === 'critical' ? 30 : sev === 'high' ? 60 : 120),
+          verification_mins: row.verification_mins || 120,
+        };
+      }
     }
 
-    // 4. Lookara Global Default Tier
-    if (slaRes.rows.length === 0) {
-      slaRes = await query(
+    // 5. Lookara Base Default Tier
+    if (!sla) {
+      const baseSlaRes = await query(
         `SELECT * FROM sla_templates 
          WHERE (organization_id IS NULL OR market IS NULL) AND severity = $1 
          ORDER BY created_at ASC LIMIT 1`,
         [sev]
       );
+      if (baseSlaRes.rows.length > 0) {
+        resolvedTier = 'lookara_base';
+        const row = baseSlaRes.rows[0];
+        sla = {
+          id: row.id,
+          acknowledge_mins: row.acknowledge_mins,
+          arrival_mins: row.arrival_mins,
+          completion_mins: row.completion_mins,
+          escalation_mins: row.escalation_mins || (sev === 'critical' ? 30 : sev === 'high' ? 60 : 120),
+          verification_mins: row.verification_mins || 120,
+        };
+      }
     }
 
     // Fallback baseline SLA parameters if no rows exist in database
-    const sla = slaRes.rows[0] || {
-      id: null,
-      acknowledge_mins: sev === 'critical' ? 15 : sev === 'high' ? 30 : 60,
-      arrival_mins: sev === 'critical' ? 60 : sev === 'high' ? 120 : 240,
-      completion_mins: sev === 'critical' ? 240 : sev === 'high' ? 480 : 1440,
-      verification_mins: 120,
-    };
+    if (!sla) {
+      resolvedTier = 'lookara_base';
+      sla = {
+        id: null,
+        acknowledge_mins: sev === 'critical' ? 15 : sev === 'high' ? 30 : 60,
+        arrival_mins: sev === 'critical' ? 60 : sev === 'high' ? 120 : 240,
+        completion_mins: sev === 'critical' ? 240 : sev === 'high' ? 480 : 1440,
+        escalation_mins: sev === 'critical' ? 30 : sev === 'high' ? 60 : 120,
+        verification_mins: 120,
+      };
+    }
 
     const now = new Date();
     const ackTarget = new Date(now.getTime() + (sla.acknowledge_mins || 30) * 60000);
     const arrTarget = new Date(now.getTime() + (sla.arrival_mins || 60) * 60000);
     const compTarget = new Date(now.getTime() + (sla.completion_mins || 240) * 60000);
+    const escTarget = new Date(now.getTime() + (sla.escalation_mins || 60) * 60000);
     const verTarget = new Date(now.getTime() + (sla.verification_mins || 120) * 60000);
 
     await query(
       `INSERT INTO job_sla_snapshots (
-        job_id, sla_template_id, acknowledge_target, arrival_target, completion_target, verification_target
-       ) VALUES ($1, $2, $3, $4, $5, $6)
+        job_id, sla_template_id, acknowledge_target, arrival_target, completion_target, verification_target, escalation_target, resolved_tier
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (job_id) DO UPDATE SET
         acknowledge_target = EXCLUDED.acknowledge_target,
         arrival_target = EXCLUDED.arrival_target,
         completion_target = EXCLUDED.completion_target,
-        verification_target = EXCLUDED.verification_target`,
-      [task.id, sla.id || null, ackTarget, arrTarget, compTarget, verTarget]
+        verification_target = EXCLUDED.verification_target,
+        escalation_target = EXCLUDED.escalation_target,
+        resolved_tier = EXCLUDED.resolved_tier`,
+      [task.id, sla.id || null, ackTarget, arrTarget, compTarget, verTarget, escTarget, resolvedTier]
     );
 
     // Audit log

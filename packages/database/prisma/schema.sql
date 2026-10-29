@@ -471,9 +471,12 @@ CREATE TABLE IF NOT EXISTS sla_templates (
   arrival_mins INTEGER NOT NULL,
   completion_mins INTEGER NOT NULL,
   verification_mins INTEGER NOT NULL,
+  escalation_mins INTEGER,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE sla_templates ADD COLUMN IF NOT EXISTS escalation_mins INTEGER;
 
 CREATE TABLE IF NOT EXISTS property_sla_overrides (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -491,9 +494,14 @@ CREATE TABLE IF NOT EXISTS job_sla_snapshots (
   arrival_target TIMESTAMPTZ,
   completion_target TIMESTAMPTZ,
   verification_target TIMESTAMPTZ,
+  escalation_target TIMESTAMPTZ,
+  resolved_tier TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE(job_id)
 );
+
+ALTER TABLE job_sla_snapshots ADD COLUMN IF NOT EXISTS escalation_target TIMESTAMPTZ;
+ALTER TABLE job_sla_snapshots ADD COLUMN IF NOT EXISTS resolved_tier TEXT;
 
 -- Property Compliance Engine
 CREATE TABLE IF NOT EXISTS property_compliance_items (
