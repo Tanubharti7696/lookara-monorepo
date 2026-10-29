@@ -46,6 +46,8 @@ model Property {
   city                String
   state               String
   postalCode          String?
+  zip                 String?
+  market              String?
   country             String?              @default("US")
   latitude            Float?
   longitude           Float?
@@ -281,6 +283,7 @@ model Job {
   reworkReason             String?
   verifiedAt               DateTime?
   verifiedByUserId         String?
+  completedAt              DateTime?
   createdAt                DateTime        @default(now())
   updatedAt                DateTime        @updatedAt
 

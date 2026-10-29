@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS properties (
   city TEXT NOT NULL,
   state TEXT NOT NULL,
   postal_code TEXT,
+  zip TEXT,
+  market TEXT,
   country TEXT DEFAULT 'US',
   latitude NUMERIC(9,6),
   longitude NUMERIC(9,6),
@@ -46,6 +48,11 @@ CREATE TABLE IF NOT EXISTS properties (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_properties_org ON properties(organization_id);
+CREATE INDEX IF NOT EXISTS idx_properties_market ON properties(market);
+CREATE INDEX IF NOT EXISTS idx_properties_zip ON properties(zip);
+
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS zip TEXT;
+ALTER TABLE properties ADD COLUMN IF NOT EXISTS market TEXT;
 
 -- 3. Users (One identity per human across all portals)
 CREATE TABLE IF NOT EXISTS users (
@@ -268,6 +275,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   on_site_at TIMESTAMPTZ,
   verified_at TIMESTAMPTZ,
   verified_by_user_id UUID REFERENCES users(id),
+  completed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -279,6 +287,7 @@ ALTER TABLE jobs ADD COLUMN IF NOT EXISTS rework_parent_job_id UUID REFERENCES j
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS rework_reason TEXT;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
 ALTER TABLE jobs ADD COLUMN IF NOT EXISTS verified_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS job_evidence (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
