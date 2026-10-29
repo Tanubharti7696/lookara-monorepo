@@ -12,308 +12,17 @@ import {
 } from './JobsDrawers';
 import './Jobs.css';
 
-/* ── DATA (seed) — fallback in case of connection delay ── */
-const INCOMING_SEED: IncomingJob[] = [
-    {
-        id: 'i-001', taskId: 'TSK-9001', workflowClass: 'Emergency', trade: 'Pool & Water Systems',
-        type: 'emg', priority: 'CRITICAL', title: 'Water Leak — Emergency Response',
-        property: 'Seaside Villa', address: '2210 Seaside Ct, Kissimmee FL 34741',
-        city: 'Kissimmee, FL', dist: '2.1 mi SW', pm: 'Coastal STR Management',
-        jobType: 'Plumbing Emergency', time: 'ASAP', dur: 'Est. 45–90 min', payout: 225,
-        deadline: '01:42', deadlineClass: 'urgent', access: true, competitors: 4,
-        issue: 'Active water leak reported in pool equipment bay. Guest on site. Immediate response required.',
-        scope: 'Assess leak source · Shut off supply if needed · Document with photos · Notify PM on arrival',
-        gateCode: '6612#', lockBox: 'Front entrance · 3390', parking: 'Street, front gate',
-        payBase: 185, payBonus: 40,
-    },
-    {
-        id: 'i-002', taskId: 'TSK-9002', workflowClass: 'Inspection', trade: 'Pool & Water Systems',
-        type: 'new', priority: 'HIGH', priorityLevel: 'HIGH',
-        title: 'Pump Inspection & Pressure Test', property: 'Palm Ridge',
-        address: '7745 Palm Ridge Rd, Kissimmee FL 34746', city: 'Kissimmee, FL', dist: '8.1 mi NE',
-        pm: 'Coastal STR Management', jobType: 'Inspection', time: 'Today 10:00 AM', dur: 'Est. 60 min',
-        payout: 120, deadline: 'Respond within 12 min', deadlineClass: 'warn', access: true,
-        issue: 'Routine pump inspection required before guest arrival at 2 PM. Pressure test and chemical check included.',
-        scope: 'Inspect pump condition · Pressure test · Chemical check · Report findings',
-        gateCode: '4821#', lockBox: 'Side gate · 7731', parking: 'Driveway',
-    },
-    {
-        id: 'i-003', taskId: 'TSK-9003', workflowClass: 'Recurring / Scheduled', trade: 'Pool & Water Systems',
-        type: 'expiring', priority: 'NORMAL', priorityLevel: 'NORMAL',
-        title: 'Weekly Chemical Balance & Brush', property: 'Sunset Palms',
-        address: '910 Sunset Palms Ave, Orlando FL 32827', city: 'Orlando, FL', dist: '11.4 mi SE',
-        pm: 'SunState Rentals', jobType: 'Maintenance', time: 'Tomorrow 8:00 AM', dur: 'Est. 45 min',
-        payout: 85, deadline: 'Expires in 4 hrs', deadlineClass: 'warn', access: true,
-        issue: 'Standard weekly pool maintenance. No special conditions reported.',
-        scope: 'Test and balance chemicals · Brush walls and floor · Skim surface · Clean basket',
-        gateCode: '2209#', lockBox: 'Pool shed · 4410', parking: 'Street',
-    },
-    {
-        id: 'i-004', taskId: 'TSK-9004', workflowClass: 'Assessment / Quote Required', trade: 'Pool & Water Systems',
-        type: 'estimate', priority: 'NORMAL', priorityLevel: 'NORMAL', isEstimate: true,
-        title: 'Pump System Overhaul', property: 'Lakewood Villa',
-        address: '640 Lakewood Dr, Lake Nona FL 32827', city: 'Lake Nona, FL', dist: '5.9 mi SE',
-        pm: 'Coastal STR Management', jobType: 'Repair', time: 'Flexible — quote required',
-        dur: 'Est. 3–4 hrs', payout: null, deadline: null, deadlineClass: '', access: true,
-        issue: 'Pump system showing reduced pressure. Full inspection needed before scope of work can be determined. Vendor must submit quote prior to starting work.',
-        scope: 'Inspect pump and motor · Identify fault · Submit quote for PM approval · Begin work after approval',
-        gateCode: '8812#', lockBox: 'Pump shed · 4410', parking: 'Driveway',
-        estimateStatus: null,
-    },
-    {
-        id: 'i-005', taskId: 'TSK-9005', workflowClass: 'Assessment / Quote Required', trade: 'Pool & Water Systems',
-        type: 'assessment', priority: 'NORMAL', priorityLevel: 'NORMAL', isAssessment: true,
-        title: 'Unknown Pool Leak', property: 'Seaside Villa',
-        address: '2245 Seaside Ct, Orlando FL 32819', city: 'Orlando, FL', dist: '3.2 mi NW',
-        pm: 'Coastal STR Management', jobType: 'Assessment', time: 'Flexible',
-        dur: 'Est. 45–90 min', payout: null, deadline: null, deadlineClass: '', access: true,
-        issue: 'Guest reported water loss in pool area. Source unknown. Full assessment required before any repair work can begin.',
-        scope: 'Inspect pool structure and equipment · Document findings with photos · Identify root cause · Submit quote',
-        gateCode: '7743#', lockBox: 'Front gate · 2291', parking: 'Street',
-        assessmentStatus: null, slaRespond: '10 min', slaComplete: '4 hours', slaStatus: 'on_track',
-        assessmentFee: 75, assessmentFeeNote: 'Paid upon completion, regardless of repair outcome',
-        detectedVia: 'Incident Report',
-        riskFlags: ['Unknown scope', 'Potential equipment failure'],
-        quoteRequirements: ['Labor cost', 'Materials estimate', 'Time estimate'],
-    },
-];
-
-const ACTIVE_SEED: ActiveJob[] = [
-    {
-        id: 'a-001', taskId: 'TSK-9101', workflowClass: 'Standard Repair', trade: 'Pool & Water Systems',
-        status: 'in-progress', priority: 'HIGH', title: 'Pool Filter Replacement + Chemical Balance',
-        issue: 'Pool filter showing signs of wear and reduced flow. PM requested replacement and chemical rebalance during today\'s service window.',
-        scope: 'Inspect current filter condition · Remove and replace cartridge filter · Test chemical levels (pH + Chlorine) · Balance and treat if needed · Run system test — pump + circulation · Upload completion photos',
-        instructions: 'Gate code and lock box below. Pool area is accessible from the side gate — no need to enter the unit. Log pH/chlorine readings before and after treatment in completion notes.',
-        property: 'Sunset Villa', city: 'Orlando, FL', dist: '6.3 mi NE',
-        pm: 'SunState Rentals', jobType: 'Repair',
-        time: '08:30 AM', dur: '2h window', payout: 85, step: 3, totalSteps: 5,
-        onTime: 'Running on time', onTimeClass: 'ok',
-        address: '1421 Sunset Blvd, Orlando FL 32801',
-        gateCode: '4821#', lockBox: 'Side gate · 7731', parking: 'Street, pool gate entrance',
-        checklist: [
-            { done: true, text: 'Inspect current filter condition' },
-            { done: true, text: 'Remove and replace cartridge filter' },
-            { done: false, text: 'Test chemical levels — pH + Chlorine' },
-            { done: false, text: 'Balance and treat if needed' },
-            { done: false, text: 'Run system test — pump + circulation' },
-            { done: false, text: 'Upload completion photos' },
-        ],
-        timeline: [
-            { event: 'Job accepted', time: '08:12 AM', state: 'ok' },
-            { event: 'En route', time: '08:20 AM', state: 'ok' },
-            { event: 'On site', time: '08:34 AM', state: 'ok' },
-            { event: 'Checklist started', time: '08:41 AM', state: 'ok' },
-            { event: 'Completion pending', time: '—', state: 'pending' },
-        ],
-        beforePhotos: [], afterPhotos: [], materialsUsed: [],
-    },
-    {
-        id: 'a-002', taskId: 'TSK-9102', pmTaskId: 'TSK-0214',
-        workflowClass: 'Recurring / Scheduled', trade: 'Pool & Water Systems',
-        status: 'accepted', priority: 'NORMAL', title: 'Filter Cleaning & Algae Treatment',
-        issue: 'Weekly filter cleaning and algae treatment per the property\'s recurring pool service contract.',
-        scope: 'Inspect filter for algae buildup · Clean and backwash filter · Apply algae treatment dose · Test and balance water chemistry',
-        property: 'Park Cove Retreat', city: 'Windermere, FL', dist: '14.2 mi SW',
-        pm: 'Premier Stays', jobType: 'Maintenance',
-        time: '01:00 PM', scheduledTime: 'Scheduled 01:00 PM', startsInMin: 32, dur: '1h window',
-        payout: 110, step: 0, totalSteps: 4, onTime: null, onTimeClass: 'ok',
-        address: '88 Lakeview Dr, Windermere FL 34786',
-        gateCode: '9934#', lockBox: 'Rear gate · 1122', parking: 'Driveway permitted',
-        checklist: [
-            { done: false, text: 'Inspect filter for algae buildup' },
-            { done: false, text: 'Clean and backwash filter' },
-            { done: false, text: 'Apply algae treatment dose' },
-            { done: false, text: 'Test and balance water chemistry' },
-        ],
-        timeline: [
-            { event: 'Job accepted', time: 'Yesterday 4:12 PM', state: 'ok' },
-            { event: 'Scheduled 1:00 PM today', time: '', state: 'pending' },
-        ],
-        beforePhotos: [], afterPhotos: [], materialsUsed: [],
-    },
-    {
-        id: 'a-rw1', taskId: 'TSK-9103', workflowClass: 'Standard Repair', trade: 'Pool & Water Systems',
-        status: 'rework-required', priority: 'HIGH', jobType: 'Repair',
-        title: 'Pool Filter Replacement + Chemical Balance',
-        property: 'Sunset Villa', city: 'Orlando, FL', dist: '6.3 mi NE',
-        pm: 'SunState Rentals', payout: 85, time: 'Mar 21', dur: 'Est. 45 min',
-        address: '1421 Sunset Blvd, Orlando FL 32801',
-        gateCode: '4821#', lockBox: 'Side gate · 7731', parking: 'Street, pool gate entrance',
-        step: 0, totalSteps: 6, onTime: null, onTimeClass: 'ok',
-        reworkCount: 1, reworkReason: 'Missed Area', reworkAffectedArea: 'Upper filter housing',
-        reworkReference: 'Photo #2 highlighted by PM',
-        reworkNotes: 'Upper filter housing was not cleaned. Residue visible in photo #2. Please re-clean, run a wipe test, and resubmit photos showing the corrected area.',
-        reworkRequestedAt: 'Mar 21 · 2:30 PM', reworkDeadline: '24 hours',
-        reworkSlaHoursLeft: 22, reworkSlaMinLeft: 14, reworkSlaStatus: 'on_track',
-        reworkStarted: false, previousSubmittedAt: 'Mar 21 · 11:45 AM', _reworkPhotosCount: 0,
-        checklist: [
-            { done: true, text: 'Inspect current filter condition' },
-            { done: true, text: 'Remove and replace cartridge filter' },
-            { done: true, text: 'Test chemical levels — pH + Chlorine' },
-            { done: true, text: 'Balance and treat if needed' },
-            { done: true, text: 'Run system test — pump + circulation' },
-            { done: true, text: 'Upload completion photos' },
-        ],
-        timeline: [
-            { event: 'Job accepted', time: 'Mar 21 · 7:30 AM', state: 'ok' },
-            { event: 'En route', time: 'Mar 21 · 8:20 AM', state: 'ok' },
-            { event: 'On site', time: 'Mar 21 · 8:34 AM', state: 'ok' },
-            { event: 'Work completed', time: 'Mar 21 · 11:40 AM', state: 'ok' },
-            { event: 'Completion submitted', time: 'Mar 21 · 11:45 AM', state: 'ok' },
-            { event: 'PM requested rework — Missed Area · Upper filter housing', time: 'Mar 21 · 2:30 PM', state: 'warn' },
-        ],
-        beforePhotos: [], afterPhotos: [], materialsUsed: [],
-    },
-    {
-        id: 'a-rr1', taskId: 'TSK-9105', workflowClass: 'Standard Repair', trade: 'HVAC',
-        status: 'resume-requested', priority: 'NORMAL', jobType: 'Repair',
-        title: 'AC Compressor Repair', property: 'Lakeview Manor',
-        city: 'Orlando, FL', dist: '9.8 mi SE', pm: 'Premier Stays',
-        payout: 145, time: 'Mar 22', dur: 'Est. 2 hrs',
-        address: '44 Lakeview Dr, Orlando FL 34786',
-        gateCode: '6612#', lockBox: 'Side door · 2290', parking: 'Driveway',
-        step: 1, totalSteps: 4, onTime: null, onTimeClass: 'ok',
-        pauseIssueType: '📦 Missing materials',
-        pauseReason: 'Replacement compressor capacitor not on the truck. Nearest supply house closes at 6 PM — requesting authorization to source it and resume tomorrow morning instead.',
-        pauseRequestedAt: 'Mar 22 · 11:22 AM',
-        checklist: [
-            { done: true, text: 'Diagnose compressor issue' },
-            { done: false, text: 'Replace compressor capacitor' },
-            { done: false, text: 'Test system — cooling cycle' },
-            { done: false, text: 'Upload completion photos' },
-        ],
-        timeline: [
-            { event: 'Job accepted', time: 'Mar 22 · 9:40 AM', state: 'ok' },
-            { event: 'On site — began diagnostics', time: 'Mar 22 · 9:52 AM', state: 'ok' },
-            { event: 'Issue found — missing part', time: 'Mar 22 · 11:20 AM', state: 'warn' },
-            { event: 'Requested authorization to resume', time: 'Mar 22 · 11:22 AM', state: 'warn' },
-        ],
-        beforePhotos: [], afterPhotos: [], materialsUsed: [],
-    },
-    {
-        id: 'a-asmnt-1', taskId: 'TSK-9104', workflowClass: 'Assessment / Quote Required', trade: 'Pool & Water Systems',
-        status: 'quote-pending', priority: 'NORMAL', jobType: 'Assessment', isAssessment: true,
-        title: 'Unknown Pool Leak', property: 'Bayfront Lodge',
-        city: 'Orlando, FL', dist: '4.1 mi NE', pm: 'Coastal STR Management',
-        time: 'Submitted Mar 21 · 9:45 AM', dur: 'Est. 2–3 hrs', payout: null,
-        address: '320 Bay Dr, Orlando FL 32801',
-        gateCode: '5521#', lockBox: 'Pool shed · 3310', parking: 'Driveway',
-        step: 0, totalSteps: 0, onTime: null, onTimeClass: 'ok',
-        assessmentStatus: 'submitted', quoteAmount: 420,
-        quoteScope: 'Replace inlet valve + patch liner seam + full pressure test',
-        quoteTime: '2–3 hours', quoteSubmittedAt: 'Mar 21 · 9:45 AM',
-        quoteRejectedReason: null, revisionCount: 0,
-        findings: 'Water loss approximately 2 inches per day. Hairline crack found near main inlet valve. Liner seam separation also detected at NE corner.',
-        checklist: [], timeline: [], beforePhotos: [], afterPhotos: [], materialsUsed: [],
-    },
-    {
-        id: 'a-asmnt-2', taskId: 'TSK-9105b', workflowClass: 'Assessment / Quote Required', trade: 'Pool & Water Systems',
-        status: 'approved', priority: 'NORMAL', jobType: 'Assessment', isAssessment: true,
-        title: 'Pump Motor Failure', property: 'Sunset Palms',
-        city: 'Orlando, FL', dist: '7.3 mi SE', pm: 'SunState Rentals',
-        time: 'Approved Mar 20 · 3:12 PM', dur: 'Est. 3 hrs', payout: 680,
-        address: '91 Palm Ave, Orlando FL 32819',
-        gateCode: '4401#', lockBox: 'Equipment bay · 7744', parking: 'Street',
-        step: 0, totalSteps: 4, onTime: null, onTimeClass: 'ok',
-        assessmentStatus: 'approved', quoteAmount: 680,
-        quoteScope: 'Replace pump motor + seal kit + rewire control board',
-        quoteTime: '3 hours', quoteSubmittedAt: 'Mar 20 · 11:00 AM',
-        quoteApprovedAt: 'Mar 20 · 3:12 PM', quoteRejectedReason: null, revisionCount: 0,
-        findings: 'Pump motor seized — bearing failure. Control board shows burn marks. Full replacement required.',
-        checklist: [
-            { done: false, text: 'Remove failed pump motor' },
-            { done: false, text: 'Install replacement motor + seal kit' },
-            { done: false, text: 'Rewire control board' },
-            { done: false, text: 'Run system test — confirm full operation' },
-        ],
-        timeline: [
-            { event: 'Assessment accepted', time: 'Mar 19 · 2:00 PM', state: 'ok' },
-            { event: 'Findings + quote submitted', time: 'Mar 20 · 11:00 AM', state: 'ok' },
-            { event: 'PM approved quote', time: 'Mar 20 · 3:12 PM', state: 'ok' },
-            { event: 'Work pending start', time: '', state: 'pending' },
-        ],
-        beforePhotos: [], afterPhotos: [], materialsUsed: [],
-    },
-    {
-        id: 'a-asmnt-3', taskId: 'TSK-9106', workflowClass: 'Assessment / Quote Required', trade: 'Pool & Water Systems',
-        status: 'quote-rejected', priority: 'NORMAL', jobType: 'Assessment', isAssessment: true,
-        title: 'Deck Crack Investigation', property: 'Marina Cove',
-        city: 'Orlando, FL', dist: '6.8 mi NW', pm: 'Premier Stays',
-        time: 'Rejected Mar 21 · 10:30 AM', dur: 'Est. 2 hrs', payout: null,
-        address: '14 Marina Blvd, Orlando FL 32806',
-        gateCode: '3301#', lockBox: 'Side gate · 9910', parking: 'Driveway',
-        step: 0, totalSteps: 0, onTime: null, onTimeClass: 'ok',
-        assessmentStatus: 'rejected', quoteAmount: 580,
-        quoteScope: 'Resurface deck + fill hairline cracks + apply sealant',
-        quoteTime: '2 hours', quoteSubmittedAt: 'Mar 21 · 8:00 AM',
-        quoteRejectedReason: 'Too high — please revise. Budget cap is $400.',
-        revisionCount: 0,
-        findings: 'Three hairline cracks along NE deck edge. Surface delamination visible near drain.',
-        checklist: [], timeline: [
-            { event: 'Assessment accepted', time: 'Mar 20 · 9:00 AM', state: 'ok' },
-            { event: 'Findings + quote submitted ($580)', time: 'Mar 21 · 8:00 AM', state: 'ok' },
-            { event: 'PM rejected quote', time: 'Mar 21 · 10:30 AM', state: 'warn' },
-        ],
-        beforePhotos: [], afterPhotos: [], materialsUsed: [],
-    },
-];
-
-const COMPLETED_SEED: CompletedJob[] = [
-    {
-        id: 'c-001', taskId: 'TSK-9301', workflowClass: 'Emergency', trade: 'Pool & Water Systems',
-        date: 'Mar 11', title: 'Water Leak Emergency Response',
-        property: 'Seaside Villa', city: 'Kissimmee, FL', pm: 'Coastal STR',
-        payout: '$225', payStatus: 'awaiting-payment',
-        payMethod: null, payRef: null, payDate: null, payRecordedAt: null,
-        reminderCount: 1, lastReminderAt: '2026-03-19T10:00:00', reminderSentAt: 'Mar 19 · 10:00 AM',
-        completedAt: '08:47 AM', verifiedAt: '10:30 AM',
-        waitingDays: 10, overdue: true,
-        disputeAt: null, disputeReason: null,
-    },
-    {
-        id: 'c-002', taskId: 'TSK-9302', workflowClass: 'Standard Repair', trade: 'Pool & Water Systems',
-        date: 'Mar 10', title: 'Pool Filter Replacement',
-        property: 'Sunset Villa', city: 'Orlando, FL', pm: 'SunState Rentals',
-        payout: '$85', payStatus: 'payment-sent',
-        payMethod: 'Zelle', payRef: 'ZL-982344', payDate: 'Mar 12', payRecordedAt: 'Mar 12 · 2:14 PM',
-        reminderCount: 1, lastReminderAt: '2026-03-11T14:00:00', reminderSentAt: null,
-        completedAt: '11:02 AM', verifiedAt: '1:30 PM',
-        waitingDays: 11, overdue: false,
-        disputeAt: null, disputeReason: null,
-    },
-    {
-        id: 'c-003', taskId: 'TSK-9303', workflowClass: 'Recurring / Scheduled', trade: 'Pool & Water Systems',
-        date: 'Mar 9', title: 'Weekly Pool Cleaning',
-        property: 'Marina Cove', city: 'Orlando, FL', pm: 'SunState Rentals',
-        payout: '$75', payStatus: 'payment-disputed',
-        payMethod: 'Zelle', payRef: 'ZL-774211', payDate: 'Mar 11', payRecordedAt: 'Mar 11 · 8:00 AM',
-        reminderCount: 2, lastReminderAt: '2026-03-10T10:00:00', reminderSentAt: null,
-        completedAt: '1:15 PM', verifiedAt: '3:00 PM',
-        waitingDays: 12, overdue: true,
-        disputeAt: 'Mar 12 · 9:12 AM', disputeReason: 'Payment not received in my account',
-    },
-];
-
-const HISTORY_SEED: HistoryJob[] = [
-    { id: 'h-001', taskId: 'TSK-9201', workflowClass: 'Recurring / Scheduled', trade: 'Pool & Water Systems', date: 'Mar 10', title: 'Chemical Balance & Skim', property: 'Sunset Villa', pm: 'SunState', status: 'completed', payout: '$85', payStatus: 'paid', payMethod: 'Zelle', payRef: 'ZL-88234', payDate: 'Mar 11', incident: null },
-    { id: 'h-002', taskId: 'TSK-9202', workflowClass: 'Emergency', trade: 'Pool & Water Systems', date: 'Mar 9', title: 'Emergency Pump Repair', property: 'Seaside Villa', pm: 'Coastal STR', status: 'completed', payout: '$240', payStatus: 'paid', payMethod: 'ACH', payRef: 'ACH-44102', payDate: 'Mar 10', incident: null },
-    { id: 'h-003', taskId: 'TSK-9203', workflowClass: 'Inspection', trade: 'Pool & Water Systems', date: 'Mar 8', title: 'Pool Inspection', property: 'Palm Ridge', pm: 'Coastal STR', status: 'rework-required', payout: '—', payStatus: '—', payMethod: null, payRef: null, payDate: null, incident: 'Rework: incomplete chemical test' },
-    { id: 'h-004', taskId: 'TSK-9204', workflowClass: 'Recurring / Scheduled', trade: 'Pool & Water Systems', date: 'Mar 7', title: 'Weekly Maintenance', property: 'Sunset Palms', pm: 'SunState', status: 'completed', payout: '$85', payStatus: 'paid', payMethod: 'Check', payRef: 'CHK-1042', payDate: 'Mar 8', incident: null },
-    { id: 'h-005', taskId: 'TSK-9205', workflowClass: 'Standard Repair', trade: 'Pool & Water Systems', date: 'Mar 6', title: 'Filter Replacement', property: 'Bay Breeze Apt', pm: 'Premier Stays', status: 'completed', payout: '$110', payStatus: 'paid', payMethod: 'Zelle', payRef: 'ZL-77901', payDate: 'Mar 7', incident: null },
-    { id: 'h-006', taskId: 'TSK-9206', workflowClass: 'Emergency', trade: 'Pool & Water Systems', date: 'Mar 5', title: 'Emergency Chemical', property: 'Oak Manor', pm: 'Coastal STR', status: 'cancelled', payout: '—', payStatus: '—', payMethod: null, payRef: null, payDate: null, incident: null },
-    { id: 'h-007', taskId: 'TSK-9207', workflowClass: 'Recurring / Scheduled', trade: 'Pool & Water Systems', date: 'Mar 4', title: 'Algae Treatment', property: 'Lakewood Villa', pm: 'SunState', status: 'completed', payout: '$95', payStatus: 'paid', payMethod: 'Bank', payRef: 'TRF-20941', payDate: 'Mar 5', incident: null },
-];
-
 /* ═══════════════════════════════════════════════════════════ */
 export default function Jobs() {
     const { showToast } = useVendor();
     const [tab, setTab] = useState<JobTab>('incoming');
-    const [incoming, setIncoming] = useState(INCOMING_SEED);
-    const [active, setActive] = useState(ACTIVE_SEED);
-    const [completed, setCompleted] = useState(COMPLETED_SEED);
-    const [history, setHistory] = useState(HISTORY_SEED);
+    const [incoming, setIncoming] = useState<IncomingJob[]>([]);
+    const [active, setActive] = useState<ActiveJob[]>([]);
+    const [completed, setCompleted] = useState<CompletedJob[]>([]);
+    const [history, setHistory] = useState<HistoryJob[]>([]);
     const [missed, setMissed] = useState<MissedOffer[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [fetchError, setFetchError] = useState<string | null>(null);
     const [msgThreads, setMsgThreads] = useState<Record<string, MsgThread[]>>(INITIAL_MSG_THREADS);
     const [search, setSearch] = useState('');
     const [sortLabel, setSortLabel] = useState('Soonest First');
@@ -326,11 +35,16 @@ export default function Jobs() {
 
     /* ── Fetch Live Jobs from Backend ── */
     useEffect(() => {
+        setLoading(true);
+        setFetchError(null);
         apiFetch('/api/v1/vendors/portal/jobs')
-            .then((r) => r.json())
+            .then((r) => {
+                if (!r.ok) throw new Error(`Server returned HTTP ${r.status}`);
+                return r.json();
+            })
             .then((body) => {
                 const list = body.data || body;
-                if (Array.isArray(list) && list.length > 0) {
+                if (Array.isArray(list)) {
                     const incList: IncomingJob[] = [];
                     const actList: ActiveJob[] = [];
                     const compList: CompletedJob[] = [];
@@ -365,10 +79,10 @@ export default function Jobs() {
                                 deadline: '15 min response window',
                                 deadlineClass: j.severity === 'critical' ? 'urgent' : 'warn',
                             });
-                        } else if (j.status === 'accepted' || j.status === 'in_progress') {
+                        } else if (j.status === 'accepted' || j.status === 'in_progress' || j.status === 'en_route' || j.status === 'on_site') {
                             actList.push({
                                 ...baseJob,
-                                status: j.status === 'accepted' ? 'accepted' : 'in-progress',
+                                status: j.status === 'accepted' ? 'accepted' : j.status === 'en_route' ? 'enroute' : j.status === 'on_site' ? 'onsite' : 'in-progress',
                                 priority: j.severity ? j.severity.toUpperCase() : 'NORMAL',
                                 step: j.status === 'in_progress' ? 2 : 1,
                                 totalSteps: 4,
@@ -437,13 +151,17 @@ export default function Jobs() {
                         }
                     });
 
-                    if (incList.length > 0) setIncoming(incList);
-                    if (actList.length > 0) setActive(actList);
-                    if (compList.length > 0) setCompleted(compList);
-                    if (histList.length > 0) setHistory(histList);
+                    setIncoming(incList);
+                    setActive(actList);
+                    setCompleted(compList);
+                    setHistory(histList);
                 }
             })
-            .catch((err) => console.warn('Could not load vendor jobs, using cached state', err));
+            .catch((err) => {
+                console.warn('Could not load vendor jobs', err);
+                setFetchError(err.message || 'Failed to load jobs from server');
+            })
+            .finally(() => setLoading(false));
     }, []);
 
     /* ── Find any job by id ── */
@@ -467,77 +185,87 @@ export default function Jobs() {
     const acceptJob = async (id: string) => {
         const j = incoming.find((x) => x.id === id);
         if (!j) return;
-        
-        // Optimistic UI
-        setIncoming((list) => list.filter((x) => x.id !== id));
-        setActive((list) => [{
-            id: j.id,
-            taskId: j.taskId,
-            workflowClass: j.workflowClass,
-            trade: j.trade,
-            status: j.type === 'emg' ? 'enroute' : 'accepted',
-            priority: j.priority,
-            title: j.title,
-            issue: j.issue,
-            scope: j.scope,
-            property: j.property,
-            city: j.city,
-            dist: j.dist,
-            pm: j.pm,
-            jobType: j.jobType,
-            type: j.type === 'emg' ? 'emg' : undefined,
-            time: j.time,
-            dur: j.dur,
-            payout: j.payout,
-            step: 0,
-            totalSteps: 4,
-            onTime: j.type === 'emg' ? 'ETA 30 min' : 'On time',
-            onTimeClass: 'ok',
-            address: j.address,
-            gateCode: j.gateCode,
-            lockBox: j.lockBox,
-            parking: j.parking,
-            checklist: [
-                { done: false, text: 'Assess leak source and severity' },
-                { done: false, text: 'Document with photos before repair' },
-                { done: false, text: 'Perform repair & complete work' },
-                { done: false, text: 'Submit completion report' },
-            ],
-            timeline: [{ event: 'Job accepted', time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }), state: 'ok' }],
-            beforePhotos: [], afterPhotos: [], materialsUsed: [],
-        }, ...list]);
-        showToast(j.type === 'emg' ? 'Emergency accepted — en route' : `${j.title} accepted`, 'success');
-        setTab('active');
 
-        // Persist to backend if real ID
-        if (!id.startsWith('i-')) {
-            try {
-                await apiFetch(`/api/v1/vendors/portal/jobs/${id}/respond`, {
+        try {
+            // Persist to backend first and only update UI upon backend confirmation
+            if (!id.startsWith('i-')) {
+                const res = await apiFetch(`/api/v1/vendors/portal/jobs/${id}/respond`, {
                     method: 'POST',
                     body: JSON.stringify({ action: 'accept' }),
                 });
-            } catch (e) {
-                console.error('Failed to notify backend of acceptance:', e);
+                if (!res.ok) {
+                    const errBody = await res.json().catch(() => ({}));
+                    throw new Error(errBody.errors?.[0]?.message || 'Failed to accept job on server');
+                }
             }
+
+            setIncoming((list) => list.filter((x) => x.id !== id));
+            setActive((list) => [{
+                id: j.id,
+                taskId: j.taskId,
+                workflowClass: j.workflowClass,
+                trade: j.trade,
+                status: j.type === 'emg' ? 'enroute' : 'accepted',
+                priority: j.priority,
+                title: j.title,
+                issue: j.issue,
+                scope: j.scope,
+                property: j.property,
+                city: j.city,
+                dist: j.dist,
+                pm: j.pm,
+                jobType: j.jobType,
+                type: j.type === 'emg' ? 'emg' : undefined,
+                time: j.time,
+                dur: j.dur,
+                payout: j.payout,
+                step: 0,
+                totalSteps: 4,
+                onTime: j.type === 'emg' ? 'ETA 30 min' : 'On time',
+                onTimeClass: 'ok',
+                address: j.address,
+                gateCode: j.gateCode,
+                lockBox: j.lockBox,
+                parking: j.parking,
+                checklist: [
+                    { done: false, text: 'Assess leak source and severity' },
+                    { done: false, text: 'Document with photos before repair' },
+                    { done: false, text: 'Perform repair & complete work' },
+                    { done: false, text: 'Submit completion report' },
+                ],
+                timeline: [{ event: 'Job accepted', time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }), state: 'ok' }],
+                beforePhotos: [], afterPhotos: [], materialsUsed: [],
+            }, ...list]);
+            showToast(j.type === 'emg' ? 'Emergency accepted — en route' : `${j.title} accepted`, 'success');
+            setTab('active');
+        } catch (e: any) {
+            console.error('Failed to notify backend of acceptance:', e);
+            showToast(e.message || 'Failed to accept job. Please try again.', 'danger');
         }
     };
 
     const confirmDecline = async () => {
         if (!declineTarget) return;
         const id = declineTarget;
-        setIncoming((list) => list.filter((x) => x.id !== id));
-        setDeclineTarget(null);
-        showToast('Job declined · logged to dispatch', 'info');
 
-        if (!id.startsWith('i-')) {
-            try {
-                await apiFetch(`/api/v1/vendors/portal/jobs/${id}/respond`, {
+        try {
+            if (!id.startsWith('i-')) {
+                const res = await apiFetch(`/api/v1/vendors/portal/jobs/${id}/respond`, {
                     method: 'POST',
                     body: JSON.stringify({ action: 'decline', declineReason: 'Vendor schedule full' }),
                 });
-            } catch (e) {
-                console.error('Failed to notify backend of decline:', e);
+                if (!res.ok) {
+                    const errBody = await res.json().catch(() => ({}));
+                    throw new Error(errBody.errors?.[0]?.message || 'Failed to decline job on server');
+                }
             }
+
+            setIncoming((list) => list.filter((x) => x.id !== id));
+            setDeclineTarget(null);
+            showToast('Job declined · logged to dispatch', 'info');
+        } catch (e: any) {
+            console.error('Failed to notify backend of decline:', e);
+            showToast(e.message || 'Failed to decline job on server.', 'danger');
         }
     };
 
@@ -639,22 +367,78 @@ export default function Jobs() {
 
                 {/* LIST */}
                 <div className="jobs-body">
-                    {tab === 'incoming' && <IncomingList jobs={filterJobs(incoming)} onOpen={setDrawerJobId} onAccept={acceptJob} onDecline={setDeclineTarget} />}
-                    {tab === 'active' && <ActiveList jobs={filterJobs(active)} onOpen={setDrawerJobId} />}
-                    {tab === 'completed' && <CompletedList jobs={filterJobs(completed)} onOpen={setDrawerJobId} onRemind={(id) => {
-                        setCompleted((list) => list.map((j) => j.id === id ? { ...j, reminderCount: j.reminderCount + 1, lastReminderAt: new Date().toISOString() } : j));
-                        showToast('Reminder sent to PM', 'success');
-                    }} onConfirm={(id) => {
-                        const j = completed.find((x) => x.id === id);
-                        if (!j) return;
-                        setCompleted((list) => list.filter((x) => x.id !== id));
-                        setHistory((list) => [{ id: j.id, taskId: j.taskId, workflowClass: j.workflowClass, trade: j.trade, date: j.date, title: j.title, property: j.property, pm: j.pm, status: 'completed', payout: j.payout, payStatus: 'paid', payMethod: j.payMethod, payRef: j.payRef, payDate: j.payDate, incident: null, confirmedAt: 'Just now' }, ...list]);
-                        showToast('Payment confirmed · Job closed', 'success');
-                    }} onDispute={(id) => {
-                        setCompleted((list) => list.map((j) => j.id === id ? { ...j, payStatus: 'payment-disputed', disputeAt: 'Just now', disputeReason: 'Payment not received in my account' } : j));
-                        showToast('Payment disputed · PM notified', 'warn');
-                    }} />}
-                    {tab === 'history' && <HistoryList jobs={filterJobs(history)} onOpen={setDrawerJobId} />}
+                    {loading && (
+                        <div style={{ padding: '3rem', textAlign: 'center', color: '#94a3b8' }}>
+                            <div style={{ display: 'inline-block', width: '28px', height: '28px', border: '3px solid rgba(255,255,255,0.2)', borderTopColor: '#f59e0b', borderRadius: '50%', animation: 'spin 0.8s linear infinite', marginBottom: '1rem' }} />
+                            <div>Loading real-time vendor jobs…</div>
+                        </div>
+                    )}
+                    {!loading && fetchError && (
+                        <div style={{ padding: '2.5rem', textAlign: 'center', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', margin: '1rem' }}>
+                            <div style={{ fontSize: '1.25rem', color: '#ef4444', fontWeight: 600, marginBottom: '0.5rem' }}>Unable to load jobs</div>
+                            <div style={{ color: '#cbd5e1', fontSize: '0.9rem' }}>{fetchError}</div>
+                        </div>
+                    )}
+                    {!loading && !fetchError && (
+                        <>
+                            {tab === 'incoming' && (
+                                incoming.length === 0 ? (
+                                    <div style={{ padding: '4rem 2rem', textAlign: 'center', color: '#64748b' }}>
+                                        <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📋</div>
+                                        <div style={{ fontWeight: 600, color: '#94a3b8', fontSize: '1rem' }}>No incoming jobs</div>
+                                        <div style={{ fontSize: '0.85rem' }}>New dispatched assignments will appear here live.</div>
+                                    </div>
+                                ) : (
+                                    <IncomingList jobs={filterJobs(incoming)} onOpen={setDrawerJobId} onAccept={acceptJob} onDecline={setDeclineTarget} />
+                                )
+                            )}
+                            {tab === 'active' && (
+                                active.length === 0 ? (
+                                    <div style={{ padding: '4rem 2rem', textAlign: 'center', color: '#64748b' }}>
+                                        <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚡</div>
+                                        <div style={{ fontWeight: 600, color: '#94a3b8', fontSize: '1rem' }}>No active jobs in progress</div>
+                                        <div style={{ fontSize: '0.85rem' }}>Accepted jobs and ongoing work orders appear here.</div>
+                                    </div>
+                                ) : (
+                                    <ActiveList jobs={filterJobs(active)} onOpen={setDrawerJobId} />
+                                )
+                            )}
+                            {tab === 'completed' && (
+                                completed.length === 0 ? (
+                                    <div style={{ padding: '4rem 2rem', textAlign: 'center', color: '#64748b' }}>
+                                        <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✓</div>
+                                        <div style={{ fontWeight: 600, color: '#94a3b8', fontSize: '1rem' }}>No jobs awaiting verification</div>
+                                        <div style={{ fontSize: '0.85rem' }}>Completed jobs undergoing PM sign-off will appear here.</div>
+                                    </div>
+                                ) : (
+                                    <CompletedList jobs={filterJobs(completed)} onOpen={setDrawerJobId} onRemind={(id) => {
+                                        setCompleted((list) => list.map((j) => j.id === id ? { ...j, reminderCount: j.reminderCount + 1, lastReminderAt: new Date().toISOString() } : j));
+                                        showToast('Reminder sent to PM', 'success');
+                                    }} onConfirm={(id) => {
+                                        const j = completed.find((x) => x.id === id);
+                                        if (!j) return;
+                                        setCompleted((list) => list.filter((x) => x.id !== id));
+                                        setHistory((list) => [{ id: j.id, taskId: j.taskId, workflowClass: j.workflowClass, trade: j.trade, date: j.date, title: j.title, property: j.property, pm: j.pm, status: 'completed', payout: j.payout, payStatus: 'paid', payMethod: j.payMethod, payRef: j.payRef, payDate: j.payDate, incident: null, confirmedAt: 'Just now' }, ...list]);
+                                        showToast('Payment confirmed · Job closed', 'success');
+                                    }} onDispute={(id) => {
+                                        setCompleted((list) => list.map((j) => j.id === id ? { ...j, payStatus: 'payment-disputed', disputeAt: 'Just now', disputeReason: 'Payment not received in my account' } : j));
+                                        showToast('Payment disputed · PM notified', 'warn');
+                                    }} />
+                                )
+                            )}
+                            {tab === 'history' && (
+                                history.length === 0 ? (
+                                    <div style={{ padding: '4rem 2rem', textAlign: 'center', color: '#64748b' }}>
+                                        <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📁</div>
+                                        <div style={{ fontWeight: 600, color: '#94a3b8', fontSize: '1rem' }}>No closed job history</div>
+                                        <div style={{ fontSize: '0.85rem' }}>Past verified and paid tasks will be archived here.</div>
+                                    </div>
+                                ) : (
+                                    <HistoryList jobs={filterJobs(history)} onOpen={setDrawerJobId} />
+                                )
+                            )}
+                        </>
+                    )}
                 </div>
             </div>
 

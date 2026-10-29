@@ -41,15 +41,15 @@ export class VendorsService {
     return res.rows.map(row => ({
       id: row.id,
       name: row.display_name || row.business_name,
-      contact_email: row.user_email || 'vendor@lookara.internal',
-      contact_phone: row.user_phone || 'Unlisted',
+      contact_email: row.user_email || row.email || null,
+      contact_phone: row.user_phone || row.phone || null,
       tier: row.org_status === 'preferred' ? 'Preferred' : 'Standard',
       org_status: row.org_status,
       insurance_status: row.ins_status === 'approved' ? 'verified' : (row.ins_status || 'unverified'),
       w9_status: row.w9_doc_status === 'approved' ? 'verified' : (row.w9_doc_status || 'unverified'),
       task_count: parseInt(row.task_count || '0', 10),
       trade_count: parseInt(row.trade_count || '0', 10),
-      rating: 4.8
+      rating: null,
     }));
   }
 
