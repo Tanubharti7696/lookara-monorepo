@@ -1,10 +1,17 @@
-// apps/backend/src/organizations/organizations.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { query } from '@lookara/database';
+import type { JwtPayload } from '@lookara/auth';
+import { OrganizationPolicyService } from './organization-policy.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class OrganizationsService {
-  async findAll(options: { search?: string; status?: string; page?: number; pageSize?: number }) {
+  constructor(
+    private readonly policyService: OrganizationPolicyService,
+    private readonly auditService: AuditService,
+  ) {}
+
+  async findAll(user: JwtPayload, options: { search?: string; status?: string; page?: number; pageSize?: number }) {
     const page = Math.max(1, options.page || 1);
     const pageSize = Math.min(100, options.pageSize || 25);
     const offset = (page - 1) * pageSize;
@@ -12,6 +19,12 @@ export class OrganizationsService {
     const conditions: string[] = [];
     const values: any[] = [];
     let idx = 1;
+
+    // Non-admin callers only see organizations they have active membership in
+    if (!user.isAdmin) {
+      conditions.push(`id IN (SELECT organization_id FROM organization_users WHERE user_id = $${idx++} AND status = 'active')`);
+      values.push(user.sub);
+    }
 
     if (options.status) {
       conditions.push(`status = $${idx++}`);
@@ -25,7 +38,7 @@ export class OrganizationsService {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const countRes = await query(`SELECT count(*) as total FROM organizations ${where}`, values);
-    const total = parseInt(countRes.rows[0].total, 10);
+    const total = parseInt(countRes.rows[0]?.total || '0', 10);
 
     values.push(pageSize, offset);
     const sql = `
@@ -42,19 +55,22 @@ export class OrganizationsService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(user: JwtPayload, id: string) {
+    await this.policyService.authorize(user, id, 'view');
     const res = await query(`SELECT * FROM organizations WHERE id = $1`, [id]);
     if (res.rows.length === 0) throw new NotFoundException('Organization not found');
     return res.rows[0];
   }
 
-  async update(id: string, data: any) {
+  async update(user: JwtPayload, id: string, data: any) {
+    await this.policyService.authorize(user, id, 'edit');
+
     const updates = [];
     const values = [id];
     let idx = 2;
 
-    const fields = ['name', 'slug', 'address', 'city', 'state', 'zip'];
-    for (const field of fields) {
+    const allowedFields = ['name', 'slug', 'address', 'city', 'state', 'zip'];
+    for (const field of allowedFields) {
       if (data[field] !== undefined) {
         updates.push(`${field} = $${idx++}`);
         values.push(data[field]);
@@ -71,10 +87,24 @@ export class OrganizationsService {
     );
 
     if (res.rows.length === 0) throw new NotFoundException('Organization not found');
+
+    await this.auditService.recordEvent({
+      actorType: user.isAdmin ? 'admin' : 'pm',
+      category: 'system',
+      eventType: 'organization.update',
+      summary: `Organization ${id} profile updated`,
+      actorUserId: user.sub,
+      targetType: 'organization',
+      targetId: id,
+      metadata: { updatedFields: Object.keys(data).filter(k => allowedFields.includes(k)) },
+    });
+
     return res.rows[0];
   }
 
-  async findUsers(organizationId: string) {
+  async findUsers(user: JwtPayload, organizationId: string) {
+    await this.policyService.authorize(user, organizationId, 'view');
+
     const sql = `
       SELECT ou.id as membership_id, ou.role, ou.status as membership_status,
              u.id as user_id, u.full_name, u.email, u.phone, u.avatar_url, u.account_status,
@@ -88,16 +118,27 @@ export class OrganizationsService {
     return res.rows;
   }
 
-  async addUser(orgId: string, data: { email: string; role: string; fullName: string }) {
+  async addUser(user: JwtPayload, orgId: string, data: { email: string; role: string; fullName: string }) {
+    await this.policyService.authorize(user, orgId, 'manage_members');
+
+    if (!data.email) {
+      throw new BadRequestException('Email is required');
+    }
+
+    const validRoles = ['owner', 'admin', 'ops_manager', 'coordinator', 'viewer'];
+    const assignedRole = data.role || 'viewer';
+    if (!validRoles.includes(assignedRole)) {
+      throw new BadRequestException(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
+    }
+
     // 1. Check if user exists
-    let userRes = await query(`SELECT id FROM users WHERE email = $1`, [data.email]);
+    let userRes = await query(`SELECT id FROM users WHERE email = $1`, [data.email.trim().toLowerCase()]);
     let userId;
 
     if (userRes.rows.length === 0) {
-      // Create stub user (would normally send invite email)
       const insertUser = await query(
         `INSERT INTO users (email, full_name, account_status) VALUES ($1, $2, 'active') RETURNING id`,
-        [data.email, data.fullName || data.email.split('@')[0]]
+        [data.email.trim().toLowerCase(), data.fullName || data.email.split('@')[0]]
       );
       userId = insertUser.rows[0].id;
     } else {
@@ -106,23 +147,52 @@ export class OrganizationsService {
 
     // 2. Add to org
     const existing = await query(
-      `SELECT id FROM organization_users WHERE organization_id = $1 AND user_id = $2`,
+      `SELECT id, status FROM organization_users WHERE organization_id = $1 AND user_id = $2`,
       [orgId, userId]
     );
 
     if (existing.rows.length > 0) {
-      throw new Error('User is already in this organization');
+      if (existing.rows[0].status === 'active') {
+        throw new BadRequestException('User is already an active member of this organization');
+      }
+      // Re-activate membership
+      const reactivate = await query(
+        `UPDATE organization_users SET role = $3, status = 'active', updated_at = NOW()
+         WHERE organization_id = $1 AND user_id = $2 RETURNING *`,
+        [orgId, userId, assignedRole]
+      );
+      return reactivate.rows[0];
     }
 
     const res = await query(
       `INSERT INTO organization_users (organization_id, user_id, role, status) VALUES ($1, $2, $3, 'active') RETURNING *`,
-      [orgId, userId, data.role || 'viewer']
+      [orgId, userId, assignedRole]
     );
+
+    await this.auditService.recordEvent({
+      actorType: user.isAdmin ? 'admin' : 'pm',
+      category: 'system',
+      eventType: 'organization.member_added',
+      summary: `User ${data.email} added to organization with role ${assignedRole}`,
+      actorUserId: user.sub,
+      targetType: 'organization',
+      targetId: orgId,
+      metadata: { targetUserId: userId, assignedRole },
+    });
 
     return res.rows[0];
   }
 
-  async updateUser(orgId: string, userId: string, data: { role?: string; status?: string }) {
+  async updateUser(user: JwtPayload, orgId: string, userId: string, data: { role?: string; status?: string }) {
+    await this.policyService.authorize(user, orgId, 'manage_members');
+
+    if (data.role) {
+      const validRoles = ['owner', 'admin', 'ops_manager', 'coordinator', 'viewer'];
+      if (!validRoles.includes(data.role)) {
+        throw new BadRequestException(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
+      }
+    }
+
     const updates = [];
     const values = [orgId, userId];
     let idx = 3;
@@ -144,15 +214,41 @@ export class OrganizationsService {
     );
 
     if (res.rows.length === 0) throw new NotFoundException('Membership not found');
+
+    await this.auditService.recordEvent({
+      actorType: user.isAdmin ? 'admin' : 'pm',
+      category: 'system',
+      eventType: 'organization.member_updated',
+      summary: `Membership updated for user ${userId} in organization ${orgId}`,
+      actorUserId: user.sub,
+      targetType: 'organization',
+      targetId: orgId,
+      metadata: { targetUserId: userId, changes: data },
+    });
+
     return res.rows[0];
   }
 
-  async removeUser(orgId: string, userId: string) {
+  async removeUser(user: JwtPayload, orgId: string, userId: string) {
+    await this.policyService.authorize(user, orgId, 'manage_members');
+
     const res = await query(
       `DELETE FROM organization_users WHERE organization_id = $1 AND user_id = $2 RETURNING id`,
       [orgId, userId]
     );
     if (res.rows.length === 0) throw new NotFoundException('Membership not found');
+
+    await this.auditService.recordEvent({
+      actorType: user.isAdmin ? 'admin' : 'pm',
+      category: 'system',
+      eventType: 'organization.member_removed',
+      summary: `User ${userId} removed from organization ${orgId}`,
+      actorUserId: user.sub,
+      targetType: 'organization',
+      targetId: orgId,
+      metadata: { targetUserId: userId },
+    });
+
     return { success: true };
   }
 }
