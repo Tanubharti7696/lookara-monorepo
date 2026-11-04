@@ -40,42 +40,14 @@ export class AuthService {
     const { email, password, portal: requestedPortal } = loginDto;
 
     // 1. Fetch user by email
-    let userResult = await query(
+    const userResult = await query(
       `SELECT id, full_name, email, password_hash, phone, avatar_url, account_status, token_version
        FROM users WHERE lower(email) = lower($1)`,
       [email.trim()],
     );
 
-    // Ensure pm@lookara.com seed user and PM organization membership are restored if missing
-    if (email.trim().toLowerCase() === 'pm@lookara.com') {
-      try {
-        const hash = await hashPassword('password123');
-        const upsertRes = await query(
-          `INSERT INTO users (full_name, email, password_hash, phone, account_status)
-           VALUES ('Carlos Mendez', 'pm@lookara.com', $1, '+1 (305) 555-0101', 'active')
-           ON CONFLICT (email) DO UPDATE SET password_hash = $1
-           RETURNING id, full_name, email, password_hash, phone, avatar_url, account_status, token_version`,
-          [hash]
-        );
-        userResult = upsertRes;
-
-        // Ensure user is linked as admin/pm in active organization
-        const orgRes = await query(`SELECT id FROM organizations WHERE status = 'active' ORDER BY created_at ASC LIMIT 1`);
-        if (orgRes.rows.length > 0 && userResult.rows.length > 0) {
-          const orgId = orgRes.rows[0].id;
-          const userId = userResult.rows[0].id;
-          await query(
-            `INSERT INTO organization_users (organization_id, user_id, role, status)
-             VALUES ($1, $2, 'admin', 'active')
-             ON CONFLICT (organization_id, user_id) DO UPDATE SET status = 'active'`,
-            [orgId, userId]
-          );
-        }
-      } catch(e) {
-        console.error('Failed to auto-seed pm@lookara.com membership', e);
-      }
-    }
-
+    // Authentication must never create accounts, change passwords, or grant memberships.
+    // Test users must be provisioned explicitly through a controlled seed/invite workflow.
     if (userResult.rows.length === 0) {
       throw new UnauthorizedException('Invalid email or password');
     }
