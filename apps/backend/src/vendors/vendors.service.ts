@@ -1,14 +1,16 @@
-import { Injectable, ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
-import { query } from '@lookara/database';
+import { Injectable, ForbiddenException, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { query, getClient } from '@lookara/database';
 import type { JwtPayload } from '@lookara/auth';
 import { AuditService } from '../audit/audit.service';
 import { TasksService } from '../tasks/tasks.service';
+import { TaskPolicyService } from '../tasks/task-policy.service';
 
 @Injectable()
 export class VendorsService {
   constructor(
     private readonly auditService: AuditService,
     private readonly tasksService: TasksService,
+    private readonly taskPolicyService: TaskPolicyService,
   ) {}
 
   async findAll(user: JwtPayload) {
@@ -211,56 +213,87 @@ export class VendorsService {
   async respondToJob(jobId: string, user: JwtPayload, body: { action: 'accept' | 'decline'; declineReason?: string }) {
     const vendorId = await this.getVendorIdForUser(user);
 
-    // Verify assignment exists for this vendor
-    const assignRes = await query(
-      `SELECT * FROM job_assignments WHERE job_id = $1 AND vendor_id = $2 ORDER BY assigned_at DESC LIMIT 1`,
-      [jobId, vendorId]
-    );
-    if (assignRes.rows.length === 0) {
-      throw new ForbiddenException('Job is not assigned to this vendor');
-    }
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
 
-    const jobRes = await query(`SELECT * FROM jobs WHERE id = $1`, [jobId]);
-    if (jobRes.rows.length === 0) throw new NotFoundException('Job not found');
-    const job = jobRes.rows[0];
+      // Lock the job row to ensure atomic transition
+      const jobRes = await client.query(`SELECT * FROM jobs WHERE id = $1 FOR UPDATE`, [jobId]);
+      if (jobRes.rows.length === 0) {
+        throw new NotFoundException('Job not found');
+      }
+      const job = jobRes.rows[0];
 
-    if (body.action === 'accept') {
-      await query(`UPDATE job_assignments SET accepted_at = now() WHERE id = $1`, [assignRes.rows[0].id]);
-      const updatedJob = await query(`UPDATE jobs SET status = 'accepted', updated_at = now() WHERE id = $1 RETURNING *`, [jobId]);
+      if (['closed', 'cancelled', 'completed'].includes(job.status)) {
+        throw new BadRequestException(`Cannot respond to a job with terminal status: ${job.status}`);
+      }
 
-      await this.auditService.recordEvent({
-        actorType: 'vendor',
-        actorUserId: user.sub,
-        targetType: 'job',
-        targetId: jobId,
-        category: 'dispatch',
-        eventType: 'job.accepted',
-        summary: `Vendor accepted Job ${job.job_code}`,
-        metadata: { vendorId },
-      });
-
-      return { status: 'accepted', job: updatedJob.rows[0] };
-    } else {
-      // Declined
-      await query(`DELETE FROM job_assignments WHERE id = $1`, [assignRes.rows[0].id]);
-      const updatedJob = await query(
-        `UPDATE jobs SET status = 'unassigned', updated_at = now() WHERE id = $1 RETURNING *`,
-        [jobId]
+      // Verify and lock assignment for this vendor
+      const assignRes = await client.query(
+        `SELECT * FROM job_assignments WHERE job_id = $1 AND vendor_id = $2 ORDER BY assigned_at DESC LIMIT 1 FOR UPDATE`,
+        [jobId, vendorId]
       );
+      if (assignRes.rows.length === 0) {
+        throw new ForbiddenException('Job is not assigned to this vendor');
+      }
 
-      // Record offer decline in audit
-      await this.auditService.recordEvent({
-        actorType: 'vendor',
-        actorUserId: user.sub,
-        targetType: 'job',
-        targetId: jobId,
-        category: 'dispatch',
-        eventType: 'job.declined',
-        summary: `Vendor declined Job ${job.job_code}. Reason: ${body.declineReason || 'Not specified'}`,
-        metadata: { vendorId, declineReason: body.declineReason },
-      });
+      const targetStatus = body.action === 'accept' ? 'accepted' : 'unassigned';
+      // Validate transition policy
+      this.taskPolicyService.validateTransition(job.status, targetStatus, 'vendor');
 
-      return { status: 'declined', job: updatedJob.rows[0] };
+      let updatedJobRow: any;
+      if (body.action === 'accept') {
+        await client.query(`UPDATE job_assignments SET accepted_at = now() WHERE id = $1`, [assignRes.rows[0].id]);
+        const updatedJob = await client.query(
+          `UPDATE jobs SET status = 'accepted', updated_at = now() WHERE id = $1 RETURNING *`,
+          [jobId]
+        );
+        updatedJobRow = updatedJob.rows[0];
+
+        await client.query('COMMIT');
+
+        await this.auditService.recordEvent({
+          actorType: 'vendor',
+          actorUserId: user.sub,
+          targetType: 'job',
+          targetId: jobId,
+          category: 'dispatch',
+          eventType: 'job.accepted',
+          summary: `Vendor accepted Job ${job.job_code}`,
+          metadata: { vendorId },
+        });
+
+        return { status: 'accepted', job: updatedJobRow };
+      } else {
+        // Declined
+        await client.query(`DELETE FROM job_assignments WHERE id = $1`, [assignRes.rows[0].id]);
+        const updatedJob = await client.query(
+          `UPDATE jobs SET status = 'unassigned', updated_at = now() WHERE id = $1 RETURNING *`,
+          [jobId]
+        );
+        updatedJobRow = updatedJob.rows[0];
+
+        await client.query('COMMIT');
+
+        // Record offer decline in audit
+        await this.auditService.recordEvent({
+          actorType: 'vendor',
+          actorUserId: user.sub,
+          targetType: 'job',
+          targetId: jobId,
+          category: 'dispatch',
+          eventType: 'job.declined',
+          summary: `Vendor declined Job ${job.job_code}. Reason: ${body.declineReason || 'Not specified'}`,
+          metadata: { vendorId, declineReason: body.declineReason },
+        });
+
+        return { status: 'declined', job: updatedJobRow };
+      }
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
   }
 
