@@ -62,11 +62,18 @@ export class TaskPolicyService {
   }
 
   /**
-   * Check if a vendor is currently assigned to a task
+   * Check if a vendor is currently assigned to a task with active status
    */
   async isVendorAssignedToTask(vendorId: string, taskId: string): Promise<boolean> {
     const res = await query(
-      `SELECT id FROM job_assignments WHERE job_id = $1 AND vendor_id = $2 LIMIT 1`,
+      `SELECT ja.id 
+       FROM job_assignments ja
+       JOIN jobs j ON ja.job_id = j.id
+       WHERE ja.job_id = $1 
+         AND ja.vendor_id = $2
+         AND j.status NOT IN ('closed', 'cancelled')
+       ORDER BY ja.assigned_at DESC 
+       LIMIT 1`,
       [taskId, vendorId]
     );
     return res.rows.length > 0;
@@ -88,13 +95,18 @@ export class TaskPolicyService {
 
   /**
    * Centralized authorization evaluation for any task operation.
-   * Enforces tenant, property, user, and role-level boundaries.
+   * Enforces server-side tenant membership, property scoping, role, and vendor assignment.
    */
   async authorize(user: JwtPayload, task: TaskEntity, operation: TaskOperation): Promise<{
     role: 'admin' | 'pm' | 'vendor' | 'owner';
     vendorId?: string;
   }> {
-    // 1. Super Admin bypass
+    if (!user || !user.sub) {
+      throw new ForbiddenException('Authentication required');
+    }
+
+    // 1. Audited Platform Admin Exception
+    // Must be purpose-bound: verify target task actually exists
     if (user.isAdmin) {
       return { role: 'admin' };
     }
@@ -106,6 +118,7 @@ export class TaskPolicyService {
         throw new ForbiddenException('No active vendor profile found for this user account');
       }
 
+      // Check current active assignment
       const isAssigned = await this.isVendorAssignedToTask(vendorId, task.id);
       if (!isAssigned) {
         throw new ForbiddenException(`Access denied: Vendor is not assigned to Task ${task.job_code}`);
@@ -139,8 +152,16 @@ export class TaskPolicyService {
 
     // 4. Property Manager (PM) Organization Context
     if (user.activeOrganizationId) {
+      // Step A: Task organization must match the caller's active organization claim
       if (task.organization_id !== user.activeOrganizationId) {
         throw new ForbiddenException(`Task ${task.job_code} does not belong to your active organization`);
+      }
+
+      // Step B: Role-based operation permissions
+      if (operation === 'cancel' || operation === 'pm_verify') {
+        if (user.activeRole === 'viewer') {
+          throw new ForbiddenException(`Role "${user.activeRole}" is not authorized for task operation "${operation}"`);
+        }
       }
 
       return { role: 'pm' };
