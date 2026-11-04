@@ -18,7 +18,7 @@ export class AuditController {
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return this.auditService.getEvents({
+    return this.auditService.getEvents(user, {
       category,
       targetType,
       targetId,
