@@ -22,12 +22,16 @@ export class DispatchService {
       throw new ForbiddenException('You do not have access to this task');
     }
 
+    // Schedulable timestamp & timezone evaluation (VEND-10)
+    const targetTimestamp = job.scheduled_start || new Date();
+
     // Canonical Eligibility & Compliance Query:
     // 1. Trade/Skill: vendor_trades matches job.trade_code and is active
     // 2. Property Coverage: vendor_property_coverage matches job.property_id and is active
     // 3. Document Compliance: vendor has NO blocking compliance requirements that are unapproved or expired
     // 4. Relationship: organization_vendors status IN ('preferred', 'neutral', 'limited')
     // 5. Emergency: if job.severity == 'critical', vendor.emergency_enabled = true
+    // 6. Availability: vendor is not marked is_off for target scheduled day of week
     let sql = `
       SELECT v.id, v.display_name, v.business_name, v.primary_trade, v.lifecycle_status,
              v.emergency_enabled, ov.relationship_status,
@@ -41,10 +45,10 @@ export class DispatchService {
         AND ($4::boolean = false OR v.emergency_enabled = true)
         AND v.accepts_new_jobs = true
         AND NOT EXISTS (
-          -- Check vendor availability schedule for current day of week (0=Sunday..6=Saturday)
+          -- Check vendor availability schedule for target scheduled day of week (0=Sunday..6=Saturday)
           SELECT 1 FROM vendor_availability va
           WHERE va.vendor_id = v.id
-            AND va.weekday = EXTRACT(DOW FROM CURRENT_TIMESTAMP)::smallint
+            AND va.weekday = EXTRACT(DOW FROM COALESCE($5::timestamptz, CURRENT_TIMESTAMP))::smallint
             AND va.is_off = true
         )
         AND NOT EXISTS (
@@ -61,10 +65,10 @@ export class DispatchService {
             )
         )
     `;
-    const params: any[] = [job.organization_id, job.property_id, job.trade_code, job.severity === 'critical'];
+    const params: any[] = [job.organization_id, job.property_id, job.trade_code, job.severity === 'critical', targetTimestamp];
 
     if (specificVendorId) {
-      sql += ` AND v.id = $5`;
+      sql += ` AND v.id = $6`;
       params.push(specificVendorId);
     }
 

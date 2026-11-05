@@ -141,7 +141,7 @@ export class TasksService {
       }
     }
 
-    const jobCode = `JOB-${Date.now().toString().slice(-4)}`;
+    const jobCode = `JOB-${Date.now().toString().slice(-4)}${Math.floor(1000 + Math.random() * 9000)}`;
     const sql = `
       INSERT INTO jobs (
         job_code, organization_id, property_id, created_by_user_id,
@@ -339,10 +339,14 @@ export class TasksService {
       timestampUpdate = ', completed_at = COALESCE(completed_at, now())';
     }
 
+    // Atomic transition: ensures status has not concurrently changed from expected task.status (TASK-03)
     const res = await query(
-      `UPDATE jobs SET status = $1, updated_at = now()${timestampUpdate} WHERE id = $2 RETURNING *`,
-      [newStatus, id]
+      `UPDATE jobs SET status = $1, updated_at = now()${timestampUpdate} WHERE id = $2 AND (status = $3 OR status = $1) RETURNING *`,
+      [newStatus, id, task.status]
     );
+    if (!res || !res.rows || res.rows.length === 0) {
+      throw new ConflictException(`Concurrent update conflict: Task status has changed from "${task.status}". Please refresh.`);
+    }
 
     // Also update job_assignments if vendor is performing transition
     if (authContext.vendorId) {
