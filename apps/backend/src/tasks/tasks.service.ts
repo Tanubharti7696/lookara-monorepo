@@ -1,5 +1,5 @@
 // apps/backend/src/tasks/tasks.service.ts
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
 import { query } from '@lookara/database';
 import { AuditService } from '../audit/audit.service';
 import type { JwtPayload } from '@lookara/auth';

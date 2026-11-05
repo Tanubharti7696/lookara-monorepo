@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
   ForbiddenException,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { query } from '@lookara/database';
 import {
