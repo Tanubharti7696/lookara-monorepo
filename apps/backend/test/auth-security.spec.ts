@@ -109,4 +109,59 @@ describe('AuthService (AUTH-01 Regression Tests)', () => {
       }
     }
   });
+
+  describe('Password Change Security (SEC-01)', () => {
+    it('denies password change when currentPassword is omitted for an account with password_hash', async () => {
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ id: 'u-1', email: 'user@example.com', password_hash: '$2b$10$storedHash' }],
+      } as any);
+
+      await expect(
+        service.changePassword('u-1', undefined, 'newSecretPassword123')
+      ).rejects.toThrow(UnauthorizedException);
+
+      // Verify no UPDATE query was executed
+      for (const call of vi.mocked(db.query).mock.calls) {
+        expect(call[0]).not.toMatch(/UPDATE users/i);
+      }
+    });
+
+    it('denies password change when currentPassword does not match stored hash', async () => {
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ id: 'u-1', email: 'user@example.com', password_hash: '$2b$10$storedHash' }],
+      } as any);
+      vi.mocked(authPkg.verifyPassword).mockResolvedValueOnce(false);
+
+      await expect(
+        service.changePassword('u-1', 'wrongOldPassword', 'newSecretPassword123')
+      ).rejects.toThrow(UnauthorizedException);
+
+      for (const call of vi.mocked(db.query).mock.calls) {
+        expect(call[0]).not.toMatch(/UPDATE users/i);
+      }
+    });
+
+    it('successfully updates password and invalidates refresh tokens when correct currentPassword is provided', async () => {
+      vi.mocked(db.query).mockResolvedValueOnce({
+        rows: [{ id: 'u-1', email: 'user@example.com', password_hash: '$2b$10$storedHash' }],
+      } as any);
+      vi.mocked(authPkg.verifyPassword).mockResolvedValueOnce(true);
+      vi.mocked(authPkg.hashPassword).mockResolvedValueOnce('$2b$10$brandNewHash');
+      vi.mocked(db.query).mockResolvedValueOnce({} as any); // UPDATE users
+      vi.mocked(db.query).mockResolvedValueOnce({} as any); // DELETE refresh_tokens
+      vi.mocked(db.query).mockResolvedValueOnce({} as any); // INSERT audit_events
+
+      const res = await service.changePassword('u-1', 'correctOldPassword', 'newSecretPassword123');
+
+      expect(res.success).toBe(true);
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringMatching(/UPDATE users SET password_hash = \$1/),
+        ['$2b$10$brandNewHash', 'u-1']
+      );
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringMatching(/DELETE FROM refresh_tokens WHERE user_id = \$1/),
+        ['u-1']
+      );
+    });
+  });
 });

@@ -118,21 +118,40 @@ describe('Organization Authorization (ORG-02 Regression Tests)', () => {
     );
   });
 
-  it('Platform super admin can view organization even without standard membership', async () => {
+  it('Platform super admin can view organization when provisioned in platform_admin_access', async () => {
     const superAdmin: JwtPayload = {
       ...userA,
       isAdmin: true,
     };
-    // 1. Policy check for platform admin: verifies org exists
+    // 1. Policy check: platform_admin_access active check
+    vi.mocked(db.query).mockResolvedValueOnce({
+      rows: [{ admin_role: 'super_admin', status: 'active' }],
+    } as any);
+    // 2. verifies org exists
     vi.mocked(db.query).mockResolvedValueOnce({
       rows: [{ id: 'org-b-uuid' }],
     } as any);
-    // 2. findOne query
+    // 3. findOne query
     vi.mocked(db.query).mockResolvedValueOnce({
       rows: [{ id: 'org-b-uuid', name: 'Org B' }],
     } as any);
 
     const res = await orgsService.findOne(superAdmin, 'org-b-uuid');
     expect(res.id).toBe('org-b-uuid');
+  });
+
+  it('Platform auditor or support admin cannot modify organization members (AUTHZ-02)', async () => {
+    const auditorAdmin: JwtPayload = {
+      ...userA,
+      isAdmin: true,
+    };
+    // 1. Policy check: platform_admin_access returns 'auditor' role
+    vi.mocked(db.query).mockResolvedValueOnce({
+      rows: [{ admin_role: 'auditor', status: 'active' }],
+    } as any);
+
+    await expect(
+      orgsService.removeUser(auditorAdmin, 'org-b-uuid', 'some-member-uuid')
+    ).rejects.toThrow(ForbiddenException);
   });
 });

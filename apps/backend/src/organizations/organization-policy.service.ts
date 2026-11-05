@@ -25,13 +25,29 @@ export class OrganizationPolicyService {
       throw new ForbiddenException('Target organization ID is required');
     }
 
-    // Platform Super Admin has audited cross-tenant access
+    // Platform Admin server-side verification and fine-grained RBAC
     if (user.isAdmin) {
+      const adminRes = await query(
+        `SELECT admin_role, status FROM platform_admin_access WHERE user_id = $1 AND status = 'active'`,
+        [user.sub],
+      );
+      if (adminRes.rows.length === 0) {
+        throw new ForbiddenException('Platform admin privileges are inactive or not provisioned');
+      }
+      const adminRole = adminRes.rows[0].admin_role;
+
+      // Auditor or read-only admin roles are restricted to view operations only
+      if (['auditor', 'read_only', 'support_admin'].includes(adminRole)) {
+        if (action === 'edit' || action === 'manage_members') {
+          throw new ForbiddenException(`Platform admin role "${adminRole}" is restricted to read-only access and cannot modify organization records`);
+        }
+      }
+
       const orgCheck = await query(`SELECT id FROM organizations WHERE id = $1`, [targetOrgId]);
       if (orgCheck.rows.length === 0) {
         throw new NotFoundException('Organization not found');
       }
-      return { role: 'admin', isPlatformAdmin: true };
+      return { role: 'admin', isPlatformAdmin: true, adminRole };
     }
 
     // Verify active server-side membership in the target organization

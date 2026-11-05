@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { VendorsService } from '../src/vendors/vendors.service';
+import { TaskPolicyService } from '../src/tasks/task-policy.service';
 import { ForbiddenException, NotFoundException, BadRequestException } from '@nestjs/common';
 import * as db from '@lookara/database';
 
@@ -8,11 +9,11 @@ vi.mock('@lookara/database', () => ({
   getClient: vi.fn(),
 }));
 
-describe('VendorsService - Security & Concurrency (VENDOR-07)', () => {
+describe('VendorsService - Security & Concurrency (VEND-04 with REAL TaskPolicyService)', () => {
   let service: VendorsService;
   let mockAuditService: any;
   let mockTasksService: any;
-  let mockTaskPolicyService: any;
+  let realTaskPolicyService: TaskPolicyService;
   let mockClient: any;
 
   beforeEach(() => {
@@ -22,9 +23,8 @@ describe('VendorsService - Security & Concurrency (VENDOR-07)', () => {
       recordEvent: vi.fn().mockResolvedValue({}),
     };
     mockTasksService = {};
-    mockTaskPolicyService = {
-      validateTransition: vi.fn(),
-    };
+    // Use REAL TaskPolicyService instance - not a mocked validateTransition function!
+    realTaskPolicyService = new TaskPolicyService();
 
     mockClient = {
       query: vi.fn(),
@@ -32,7 +32,7 @@ describe('VendorsService - Security & Concurrency (VENDOR-07)', () => {
     };
     vi.mocked(db.getClient).mockResolvedValue(mockClient as any);
 
-    service = new VendorsService(mockAuditService, mockTasksService, mockTaskPolicyService);
+    service = new VendorsService(mockAuditService, mockTasksService, realTaskPolicyService);
   });
 
   const mockUser: any = {
@@ -42,9 +42,7 @@ describe('VendorsService - Security & Concurrency (VENDOR-07)', () => {
   };
 
   it('rejects respondToJob when job is not found', async () => {
-    // Mock getVendorIdForUser
     vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'ven-1' }] } as any);
-    // client.query for BEGIN, then job select returns 0 rows
     mockClient.query
       .mockResolvedValueOnce({}) // BEGIN
       .mockResolvedValueOnce({ rows: [] }); // SELECT jobs FOR UPDATE
@@ -83,7 +81,7 @@ describe('VendorsService - Security & Concurrency (VENDOR-07)', () => {
     expect(mockClient.query).toHaveBeenCalledWith('ROLLBACK');
   });
 
-  it('atomically accepts job and executes transition within transaction', async () => {
+  it('atomically accepts job using real policy validation', async () => {
     vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'ven-1' }] } as any);
     mockClient.query
       .mockResolvedValueOnce({}) // BEGIN
@@ -95,7 +93,6 @@ describe('VendorsService - Security & Concurrency (VENDOR-07)', () => {
 
     const result = await service.respondToJob('job-1', mockUser, { action: 'accept' });
 
-    expect(mockTaskPolicyService.validateTransition).toHaveBeenCalledWith('assigned', 'accepted', 'vendor');
     expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
     expect(mockAuditService.recordEvent).toHaveBeenCalledWith(expect.objectContaining({
       actorType: 'vendor',
@@ -106,7 +103,7 @@ describe('VendorsService - Security & Concurrency (VENDOR-07)', () => {
     expect(mockClient.release).toHaveBeenCalled();
   });
 
-  it('atomically declines job, resets job status to unassigned, and deletes assignment', async () => {
+  it('atomically declines job with REAL TaskPolicyService allowing vendor_decline to unassigned', async () => {
     vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'ven-1' }] } as any);
     mockClient.query
       .mockResolvedValueOnce({}) // BEGIN
@@ -118,7 +115,6 @@ describe('VendorsService - Security & Concurrency (VENDOR-07)', () => {
 
     const result = await service.respondToJob('job-1', mockUser, { action: 'decline', declineReason: 'Too busy' });
 
-    expect(mockTaskPolicyService.validateTransition).toHaveBeenCalledWith('assigned', 'unassigned', 'vendor');
     expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
     expect(mockAuditService.recordEvent).toHaveBeenCalledWith(expect.objectContaining({
       actorType: 'vendor',
@@ -127,5 +123,12 @@ describe('VendorsService - Security & Concurrency (VENDOR-07)', () => {
     }));
     expect(result.status).toBe('declined');
     expect(mockClient.release).toHaveBeenCalled();
+  });
+
+  it('prohibits vendor from directly transitioning a task to unassigned via standard policy', () => {
+    // Verifies that a generic/direct transition call by a vendor to 'unassigned' is still forbidden
+    expect(() => {
+      realTaskPolicyService.validateTransition('assigned', 'unassigned', 'vendor', 'standard');
+    }).toThrow(ForbiddenException);
   });
 });

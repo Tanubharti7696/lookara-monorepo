@@ -238,8 +238,13 @@ export class VendorsService {
       }
 
       const targetStatus = body.action === 'accept' ? 'accepted' : 'unassigned';
-      // Validate transition policy
-      this.taskPolicyService.validateTransition(job.status, targetStatus, 'vendor');
+      // Validate transition policy with real TaskPolicyService
+      this.taskPolicyService.validateTransition(
+        job.status,
+        targetStatus,
+        'vendor',
+        body.action === 'decline' ? 'vendor_decline' : 'standard'
+      );
 
       let updatedJobRow: any;
       if (body.action === 'accept') {

@@ -64,25 +64,52 @@ export class AuditService {
     const values: any[] = [];
     let paramIdx = 1;
 
-    // Enforce Tenant Organization Scoping unless audited platform admin
-    if (!user.isAdmin) {
-      // Require active organization context or resolved memberships
+    // Check Platform Admin server-side role if user claims isAdmin
+    let isAuditedSuperAdmin = false;
+    if (user.isAdmin) {
+      const adminRes = await query(
+        `SELECT admin_role, status FROM platform_admin_access WHERE user_id = $1 AND status = 'active'`,
+        [user.sub],
+      );
+      if (adminRes.rows.length === 0) {
+        throw new ForbiddenException('Platform admin privileges are inactive or not provisioned');
+      }
+      const adminRole = adminRes.rows[0].admin_role;
+      // super_admin has platform-wide cross-tenant read capability with reason logging
+      if (adminRole === 'super_admin') {
+        isAuditedSuperAdmin = true;
+      }
+    }
+
+    // Enforce Tenant Organization Scoping for non-super-admins
+    if (!isAuditedSuperAdmin) {
+      // Require active organization context
       const orgId = user.activeOrganizationId;
       if (!orgId) {
         throw new ForbiddenException('Active organization context required to access audit history');
       }
 
-      // Scope to resources belonging to the user's organization or actor = user
+      // Verify active membership in this organization
+      const memberRes = await query(
+        `SELECT role, status FROM organization_users 
+         WHERE organization_id = $1 AND user_id = $2 AND status = 'active'`,
+        [orgId, user.sub],
+      );
+      if (memberRes.rows.length === 0 && !user.isAdmin) {
+        throw new ForbiddenException('User is not an active member of the requested organization');
+      }
+
+      // Strictly scope to resources belonging exclusively to the user's active organization
+      // Exclude generic "OR actor_user_id = user.sub" which leaked other organizations' activities
       conditions.push(`(
         target_id IN (SELECT id FROM jobs WHERE organization_id = $${paramIdx}::uuid)
         OR target_id IN (SELECT id FROM properties WHERE organization_id = $${paramIdx}::uuid)
         OR target_id = $${paramIdx}::uuid
         OR (metadata->>'organizationId') = $${paramIdx}::text
         OR (metadata->>'orgId') = $${paramIdx}::text
-        OR actor_user_id = $${paramIdx + 1}::uuid
       )`);
-      values.push(orgId, user.sub);
-      paramIdx += 2;
+      values.push(orgId);
+      paramIdx += 1;
     }
 
     if (options.category) {

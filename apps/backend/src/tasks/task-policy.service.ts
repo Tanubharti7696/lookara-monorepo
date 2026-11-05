@@ -105,9 +105,23 @@ export class TaskPolicyService {
       throw new ForbiddenException('Authentication required');
     }
 
-    // 1. Audited Platform Admin Exception
-    // Must be purpose-bound: verify target task actually exists
+    // 1. Audited Platform Admin Exception with Server-Side Role Enforcement
     if (user.isAdmin) {
+      const adminRes = await query(
+        `SELECT admin_role, status FROM platform_admin_access WHERE user_id = $1 AND status = 'active'`,
+        [user.sub],
+      );
+      if (adminRes.rows.length === 0) {
+        throw new ForbiddenException('Platform admin privileges are inactive or not provisioned');
+      }
+      const adminRole = adminRes.rows[0].admin_role;
+
+      // Read-only auditor or support admin cannot modify or verify tasks
+      if (['auditor', 'read_only'].includes(adminRole)) {
+        if (operation !== 'view') {
+          throw new ForbiddenException(`Platform admin role "${adminRole}" is restricted to read-only access on tasks`);
+        }
+      }
       return { role: 'admin' };
     }
 
@@ -171,9 +185,25 @@ export class TaskPolicyService {
   }
 
   /**
-   * Validate state transition adhering to canonical workflow rules and actor role permissions
+   * Validate state transition adhering to canonical workflow rules and actor role permissions.
+   * If action is 'vendor_decline', allows transitioning from assigned/dispatching to unassigned for that specific offer.
    */
-  validateTransition(currentStatus: string, targetStatus: string, actorRole: 'admin' | 'pm' | 'vendor' | 'owner'): void {
+  validateTransition(
+    currentStatus: string,
+    targetStatus: string,
+    actorRole: 'admin' | 'pm' | 'vendor' | 'owner',
+    action?: 'vendor_decline' | 'standard'
+  ): void {
+    if (action === 'vendor_decline' && actorRole === 'vendor') {
+      if (!['assigned', 'dispatching'].includes(currentStatus)) {
+        throw new BadRequestException(`Cannot decline an offer for a task with status: "${currentStatus}"`);
+      }
+      if (targetStatus !== 'unassigned') {
+        throw new BadRequestException(`Decline offer must transition status to "unassigned"`);
+      }
+      return;
+    }
+
     const allowedWorkflowTransitions = CANONICAL_TASK_TRANSITIONS[currentStatus] || [];
     if (!allowedWorkflowTransitions.includes(targetStatus)) {
       throw new BadRequestException(

@@ -67,6 +67,7 @@ describe('Audit History Tenant Scoping (AUDIT-03 Regression Tests)', () => {
 
   it('enforces tenant organization scoping on queries and counts for Org A', async () => {
     vi.mocked(db.query)
+      .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any) // membership check
       .mockResolvedValueOnce({ rows: [{ total: '3' }] } as any) // count query
       .mockResolvedValueOnce({
         rows: [
@@ -81,20 +82,21 @@ describe('Audit History Tenant Scoping (AUDIT-03 Regression Tests)', () => {
     expect(res.data.length).toBe(2);
 
     // Verify count query contains tenant isolation
-    const countSql = vi.mocked(db.query).mock.calls[0][0];
-    const countParams = vi.mocked(db.query).mock.calls[0][1];
+    const countSql = vi.mocked(db.query).mock.calls[1][0];
+    const countParams = vi.mocked(db.query).mock.calls[1][1];
     expect(countSql).toMatch(/organization_id = \$1::uuid/i);
     expect(countParams).toContain('org-a-uuid');
 
     // Verify list query contains tenant isolation
-    const listSql = vi.mocked(db.query).mock.calls[1][0];
-    const listParams = vi.mocked(db.query).mock.calls[1][1];
+    const listSql = vi.mocked(db.query).mock.calls[2][0];
+    const listParams = vi.mocked(db.query).mock.calls[2][1];
     expect(listSql).toMatch(/organization_id = \$1::uuid/i);
     expect(listParams).toContain('org-a-uuid');
   });
 
   it('prevents Org A user from seeing Org B target events when querying with targetId', async () => {
     vi.mocked(db.query)
+      .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any) // membership check
       .mockResolvedValueOnce({ rows: [{ total: '0' }] } as any)
       .mockResolvedValueOnce({ rows: [] } as any);
 
@@ -104,8 +106,8 @@ describe('Audit History Tenant Scoping (AUDIT-03 Regression Tests)', () => {
     expect(res.data).toEqual([]);
 
     // Query must intersect tenant scope with targetId
-    const countSql = vi.mocked(db.query).mock.calls[0][0];
-    const countParams = vi.mocked(db.query).mock.calls[0][1];
+    const countSql = vi.mocked(db.query).mock.calls[1][0];
+    const countParams = vi.mocked(db.query).mock.calls[1][1];
     expect(countSql).toMatch(/organization_id = \$1::uuid/i);
     expect(countSql).toMatch(/target_id = \$\d+::uuid/i);
     expect(countParams).toContain('org-a-uuid');
@@ -114,13 +116,14 @@ describe('Audit History Tenant Scoping (AUDIT-03 Regression Tests)', () => {
 
   it('allows platform super admin to query global audit history without single-org restriction', async () => {
     vi.mocked(db.query)
+      .mockResolvedValueOnce({ rows: [{ admin_role: 'super_admin', status: 'active' }] } as any) // platform_admin_access
       .mockResolvedValueOnce({ rows: [{ total: '150' }] } as any)
       .mockResolvedValueOnce({ rows: [{ id: 'global-event-1' }] } as any);
 
     const res = await service.getEvents(platformAdmin_User, { page: 1, pageSize: 25 });
 
     expect(res.meta.total).toBe(150);
-    const countSql = vi.mocked(db.query).mock.calls[0][0];
+    const countSql = vi.mocked(db.query).mock.calls[1][0];
     expect(countSql).not.toMatch(/organization_id = \$1::uuid/i);
   });
 });

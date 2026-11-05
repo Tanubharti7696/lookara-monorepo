@@ -377,7 +377,7 @@ export class AuthService {
    */
   async changePassword(userId: string, currentPassword?: string, newPassword?: string) {
     if (!newPassword || newPassword.length < 8) {
-      throw new UnauthorizedException('New password must be at least 8 characters long');
+      throw new BadRequestException('New password must be at least 8 characters long');
     }
 
     const userRes = await query(
@@ -391,12 +391,18 @@ export class AuthService {
 
     const user = userRes.rows[0];
 
-    // If existing password exists, verify current password
-    if (user.password_hash && currentPassword) {
+    // If account has an existing password_hash, currentPassword is required and must match
+    if (user.password_hash) {
+      if (!currentPassword || typeof currentPassword !== 'string' || currentPassword.trim() === '') {
+        throw new UnauthorizedException('Current password is required to change password');
+      }
       const valid = await verifyPassword(currentPassword, user.password_hash);
       if (!valid) {
         throw new UnauthorizedException('Current password does not match');
       }
+    } else {
+      // Invitation account with no password set yet must use the verified activation flow
+      throw new ForbiddenException('Account has not been activated. Please complete initial account setup via activation invitation.');
     }
 
     const newHash = await hashPassword(newPassword);
@@ -405,6 +411,9 @@ export class AuthService {
       `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
       [newHash, userId],
     );
+
+    // Invalidate/revoke active refresh tokens on password change
+    await query(`DELETE FROM refresh_tokens WHERE user_id = $1`, [userId]);
 
     // Audit log (actor_type must be in: 'admin', 'pm', 'vendor', 'owner', 'system')
     try {

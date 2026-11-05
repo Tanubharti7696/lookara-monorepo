@@ -11,9 +11,16 @@ const isCloudDb =
   connectionString.includes('neon.tech') ||
   connectionString.includes('supabase');
 
+// In production cloud environments, verify TLS certificates using CA or platform defaults
+const sslConfig = isCloudDb
+  ? process.env.NODE_ENV === 'production' && process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false'
+    ? { rejectUnauthorized: true }
+    : { rejectUnauthorized: false }
+  : undefined;
+
 export const pool = new Pool({
   connectionString,
-  ssl: isCloudDb ? { rejectUnauthorized: false } : undefined,
+  ssl: sslConfig,
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
