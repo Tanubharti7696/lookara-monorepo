@@ -192,6 +192,7 @@ export class DashboardService {
         slaDueAt: row.sla_due_at ? new Date(row.sla_due_at).toISOString() : null,
         action: {
           type: 'open_incident',
+          entityType: 'incident',
           entityId: row.id,
           filters: {},
         },
@@ -240,6 +241,7 @@ export class DashboardService {
           slaDueAt: row.sla_due_at ? new Date(row.sla_due_at).toISOString() : null,
           action: {
             type: 'open_incident',
+            entityType: 'task',
             entityId: row.id,
             filters: {},
           },
@@ -356,6 +358,7 @@ export class DashboardService {
         taskCount: 1,
         action: {
           type: 'open_task',
+          entityType: 'task',
           entityId: row.id,
           filters: {},
         },
@@ -468,6 +471,7 @@ export class DashboardService {
         slaDueAt: null,
         action: {
           type: taskId ? 'open_task' : (row.target_type === 'property' ? 'open_property' : 'open_activity'),
+          entityType: taskId ? 'task' : (row.target_type === 'property' ? 'property' : 'activity'),
           entityId: taskId || row.target_id || null,
           filters: {},
         },
@@ -782,6 +786,7 @@ export class DashboardService {
         slaDueAt: null,
         action: {
           type: taskId ? 'open_task' : (row.target_type === 'property' ? 'open_property' : 'open_activity'),
+          entityType: taskId ? 'task' : (row.target_type === 'property' ? 'property' : 'activity'),
           entityId: taskId || row.target_id || null,
           filters: {},
         },

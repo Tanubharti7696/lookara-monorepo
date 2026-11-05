@@ -7,6 +7,41 @@ import { AuditService } from '../audit/audit.service';
 export class IncidentsService {
   constructor(private readonly auditService: AuditService) {}
 
+  async findOne(id: string, user: JwtPayload) {
+    const orgId = user.activeOrganizationId;
+    if (!orgId) throw new ForbiddenException('Must be in an organization context');
+
+    const sql = `
+      SELECT i.*, p.name as property_name, p.address_line_1, p.city, p.state, p.timezone,
+             j.id as related_job_id, j.job_code, j.title as job_title, j.status as job_status
+      FROM incidents i
+      JOIN properties p ON i.property_id = p.id
+      LEFT JOIN jobs j ON i.related_job_id = j.id
+      WHERE i.id = $1 AND (i.organization_id = $2 OR $3 = true)
+    `;
+    const res = await query(sql, [id, orgId, user.isAdmin === true]);
+    if (res.rows.length === 0) throw new NotFoundException('Incident not found');
+    const row = res.rows[0];
+
+    return {
+      id: row.id,
+      incidentCode: row.incident_code,
+      title: row.title,
+      description: row.summary,
+      propertyId: row.property_id,
+      propertyName: row.property_name,
+      propertyAddress: `${row.address_line_1 || ''}, ${row.city || ''}, ${row.state || ''}`.trim(),
+      severity: row.severity,
+      status: row.status,
+      relatedJobId: row.related_job_id || null,
+      relatedJobCode: row.job_code || null,
+      relatedJobTitle: row.job_title || null,
+      relatedJobStatus: row.job_status || null,
+      createdAt: row.created_at,
+      resolvedAt: row.resolved_at,
+    };
+  }
+
   async findAll(user: JwtPayload, propertyId?: string) {
     const orgId = user.activeOrganizationId;
     if (!orgId) throw new ForbiddenException('Must be in an organization context');

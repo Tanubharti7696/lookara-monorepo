@@ -14,6 +14,11 @@ export class IncidentsController {
     return this.incidentsService.findAll(user, propertyId);
   }
 
+  @Get(':id')
+  async findOne(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.incidentsService.findOne(id, user);
+  }
+
   @Post()
   async create(@CurrentUser() user: JwtPayload, @Body() data: any) {
     return this.incidentsService.create(user, data);

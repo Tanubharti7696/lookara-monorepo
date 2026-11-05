@@ -88,9 +88,28 @@ export class TasksService {
 
     values.push(pageSize, offset);
     const sql = `
-      SELECT j.*, p.name AS property_name, p.address_line_1, p.city, p.state
+      SELECT j.*, p.name AS property_name, p.address_line_1, p.city, p.state,
+             v.display_name AS vendor_name,
+             jss.completion_target AS sla_target,
+             (CASE 
+                WHEN jss.completion_target IS NOT NULL AND jss.completion_target < now() AND j.status NOT IN ('completed', 'closed') THEN 'breached'
+                WHEN jss.completion_target IS NOT NULL AND jss.completion_target < (now() + interval '2 hours') AND j.status NOT IN ('completed', 'closed') THEN 'at_risk'
+                WHEN jss.completion_target IS NOT NULL THEN 'on_track'
+                ELSE 'none'
+              END) AS sla_risk_tier,
+             ARRAY_REMOVE(ARRAY[
+               CASE WHEN j.rework_count > 0 AND j.status NOT IN ('completed', 'closed') THEN 'rework_required' ELSE NULL END,
+               CASE WHEN j.quote_required = true THEN 'quote_required' ELSE NULL END
+             ], NULL) AS warning_flags
       FROM jobs j
       LEFT JOIN properties p ON j.property_id = p.id
+      LEFT JOIN (
+        SELECT DISTINCT ON (job_id) job_id, vendor_id
+        FROM job_assignments
+        ORDER BY job_id, assigned_at DESC
+      ) ja ON j.id = ja.job_id
+      LEFT JOIN vendors v ON ja.vendor_id = v.id
+      LEFT JOIN job_sla_snapshots jss ON j.id = jss.job_id
       ${where}
       ORDER BY j.created_at DESC
       LIMIT $${idx++} OFFSET $${idx++}
@@ -99,27 +118,146 @@ export class TasksService {
 
     return {
       data: res.rows,
-      meta: { page, pageSize, total },
+      meta: {
+        page,
+        pageSize,
+        total,
+        hasMore: (page * pageSize) < total,
+      },
     };
   }
 
   async findOne(id: string, user: JwtPayload) {
     const sql = `
       SELECT j.*, p.name AS property_name, p.address_line_1, p.city, p.state, p.timezone,
-             u.full_name AS created_by_name
+             u.full_name AS created_by_name,
+             v.id AS vendor_id, v.display_name AS vendor_name, v.phone AS vendor_phone,
+             ov.relationship_status AS vendor_status,
+             jss.resolved_tier AS sla_resolved_tier,
+             jss.acknowledge_target AS sla_acknowledge_target,
+             jss.arrival_target AS sla_arrival_target,
+             jss.completion_target AS sla_completion_target,
+             jss.verification_target AS sla_verification_target
       FROM jobs j
       LEFT JOIN properties p ON j.property_id = p.id
       LEFT JOIN users u ON j.created_by_user_id = u.id
+      LEFT JOIN (
+        SELECT DISTINCT ON (job_id) job_id, vendor_id
+        FROM job_assignments
+        ORDER BY job_id, assigned_at DESC
+      ) ja ON j.id = ja.job_id
+      LEFT JOIN vendors v ON ja.vendor_id = v.id
+      LEFT JOIN organization_vendors ov ON v.id = ov.vendor_id AND ov.organization_id = j.organization_id
+      LEFT JOIN job_sla_snapshots jss ON j.id = jss.job_id
       WHERE j.id = $1
     `;
     const res = await query(sql, [id]);
     if (res.rows.length === 0) throw new NotFoundException('Task not found');
-    const task = res.rows[0];
+    const row = res.rows[0];
 
     // Centralized policy authorization check
-    await this.taskPolicyService.authorize(user, task, 'view');
+    const authContext = await this.taskPolicyService.authorize(user, row, 'view');
 
-    return task;
+    // Build allowedActions based on actor role and current task status
+    const allowedActions: any[] = [];
+    if (authContext.role === 'pm' || authContext.role === 'admin') {
+      if (row.status === 'verification_pending') {
+        allowedActions.push({
+          action: 'verify_approve',
+          method: 'POST',
+          url: `/tasks/${id}/verify`,
+          body: { decision: 'approve' },
+        });
+        allowedActions.push({
+          action: 'verify_rework',
+          method: 'POST',
+          url: `/tasks/${id}/verify`,
+          body: { decision: 'rework', reworkReason: 'string' },
+        });
+      }
+      if (row.status !== 'closed' && row.status !== 'cancelled') {
+        allowedActions.push({
+          action: 'upload_evidence',
+          method: 'POST',
+          url: `/tasks/${id}/evidence`,
+          body: { evidenceType: 'before_photo | after_photo | receipt', fileUrl: 'string' },
+        });
+        allowedActions.push({
+          action: 'cancel',
+          method: 'PATCH',
+          url: `/tasks/${id}/status`,
+          body: { status: 'cancelled' },
+        });
+      }
+    } else if (authContext.role === 'vendor') {
+      if (row.status === 'assigned') {
+        allowedActions.push({
+          action: 'accept',
+          method: 'POST',
+          url: `/vendors/jobs/${id}/respond`,
+          body: { action: 'accept' },
+        });
+        allowedActions.push({
+          action: 'decline',
+          method: 'POST',
+          url: `/vendors/jobs/${id}/respond`,
+          body: { action: 'decline', declineReason: 'string' },
+        });
+      } else if (row.status === 'accepted') {
+        allowedActions.push({
+          action: 'en_route',
+          method: 'PATCH',
+          url: `/tasks/${id}/status`,
+          body: { status: 'en_route' },
+        });
+      } else if (row.status === 'en_route') {
+        allowedActions.push({
+          action: 'on_site',
+          method: 'PATCH',
+          url: `/tasks/${id}/status`,
+          body: { status: 'on_site' },
+        });
+      } else if (row.status === 'on_site') {
+        allowedActions.push({
+          action: 'in_progress',
+          method: 'PATCH',
+          url: `/tasks/${id}/status`,
+          body: { status: 'in_progress' },
+        });
+      } else if (row.status === 'in_progress') {
+        allowedActions.push({
+          action: 'complete',
+          method: 'PATCH',
+          url: `/tasks/${id}/status`,
+          body: { status: 'completed' },
+        });
+        allowedActions.push({
+          action: 'upload_evidence',
+          method: 'POST',
+          url: `/tasks/${id}/evidence`,
+          body: { evidenceType: 'after_photo', fileUrl: 'string' },
+        });
+      }
+    }
+
+    return {
+      ...row,
+      vendor: row.vendor_id ? {
+        id: row.vendor_id,
+        name: row.vendor_name,
+        phone: row.vendor_phone,
+        status: row.vendor_status || 'standard',
+      } : null,
+      sla: row.sla_completion_target ? {
+        resolvedTier: row.sla_resolved_tier || 'standard',
+        acknowledgeTarget: row.sla_acknowledge_target,
+        arrivalTarget: row.sla_arrival_target,
+        completionTarget: row.sla_completion_target,
+        verificationTarget: row.sla_verification_target,
+        isBreached: new Date(row.sla_completion_target) < new Date() && !['completed', 'closed'].includes(row.status),
+      } : null,
+      allowedActions,
+    };
   }
 
   async create(user: JwtPayload, dto: CreateTaskDto) {

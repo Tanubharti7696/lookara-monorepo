@@ -53,9 +53,27 @@ export class BillingService {
 
     return {
       subscription,
+      paymentMethod: pmRes.rows[0] || null,
       paymentMethods: pmRes.rows,
+      balance: 0.00,
       invoices: invRes.rows
     };
+  }
+
+  async getInvoices(user: JwtPayload, status?: string) {
+    const orgId = user.activeOrganizationId;
+    if (!orgId) return [];
+
+    let sql = `SELECT * FROM invoices WHERE organization_id = $1`;
+    const params: any[] = [orgId];
+    if (status) {
+      sql += ` AND status = $2`;
+      params.push(status);
+    }
+    sql += ` ORDER BY created_at DESC`;
+
+    const res = await query(sql, params);
+    return res.rows;
   }
 
   async addPaymentMethod(user: JwtPayload, methodData: any) {
