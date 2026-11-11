@@ -35,6 +35,11 @@ BEGIN
 
   -- Update jobs status check constraint to include en_route and on_site
   ALTER TABLE jobs DROP CONSTRAINT IF EXISTS jobs_status_check;
+  -- Normalize legacy job statuses if any exist before applying constraint
+  UPDATE jobs SET status = 'unassigned' WHERE status NOT IN (
+    'unassigned', 'dispatching', 'assigned', 'accepted', 'en_route', 'on_site',
+    'in_progress', 'verification_pending', 'completed', 'closed', 'cancelled', 'escalated'
+  );
   ALTER TABLE jobs ADD CONSTRAINT jobs_status_check CHECK (status IN (
     'unassigned', 'dispatching', 'assigned', 'accepted', 'en_route', 'on_site',
     'in_progress', 'verification_pending', 'completed', 'closed', 'cancelled', 'escalated'
