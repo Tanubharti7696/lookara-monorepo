@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, UseGuards } from '@nestjs/common';
 import { BillingService } from './billing.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -22,6 +22,16 @@ export class BillingController {
   @Get('payment-disputes')
   async getPaymentDisputes(@CurrentUser() user: JwtPayload) {
     return this.billingService.getInvoices(user, 'disputed');
+  }
+
+  @Get('approvals')
+  async getApprovals(@CurrentUser() user: JwtPayload, @Query('type') type?: string) {
+    return this.billingService.getApprovals(user, type);
+  }
+
+  @Get('approvals/:id')
+  async getApprovalById(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.billingService.getApprovalById(user, id);
   }
 
   @Post('billing/payment-methods')

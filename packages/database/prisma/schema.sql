@@ -435,6 +435,7 @@ CREATE TABLE IF NOT EXISTS audit_events (
   event_code TEXT UNIQUE NOT NULL,
   actor_type TEXT NOT NULL CHECK (actor_type IN ('admin','pm','vendor','owner','system')),
   actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
   target_type TEXT NOT NULL,
   target_id UUID,
   category TEXT NOT NULL,
@@ -447,6 +448,7 @@ CREATE TABLE IF NOT EXISTS audit_events (
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_events_category ON audit_events(category);
 CREATE INDEX IF NOT EXISTS idx_audit_events_target ON audit_events(target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_audit_events_organization_id ON audit_events(organization_id);
 
 -- Migration for missing property columns (idempotent)
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS beds INTEGER DEFAULT 0;

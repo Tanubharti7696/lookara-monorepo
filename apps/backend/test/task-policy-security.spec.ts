@@ -125,4 +125,27 @@ describe('Task Authorization & Policy (TASK-04 Regression Tests)', () => {
     expect(res.role).toBe('vendor');
     expect(res.vendorId).toBe('vendor-1-uuid');
   });
+
+  it('Revoked or inactive PM membership is denied access even with valid JWT claim (V9-03)', async () => {
+    // Server-side organization_users check returns empty (inactive or removed)
+    vi.mocked(db.query).mockResolvedValueOnce({ rows: [] } as any);
+
+    await expect(
+      policy.authorize(pmUser, sampleTask, 'view')
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it('Platform support_admin is denied non-view task mutations (V9-04)', async () => {
+    const supportAdminUser: JwtPayload = {
+      ...pmUser,
+      isAdmin: true,
+    };
+    vi.mocked(db.query).mockResolvedValueOnce({
+      rows: [{ admin_role: 'support_admin', status: 'active' }],
+    } as any);
+
+    await expect(
+      policy.authorize(supportAdminUser, sampleTask, 'pm_verify')
+    ).rejects.toThrow(ForbiddenException);
+  });
 });

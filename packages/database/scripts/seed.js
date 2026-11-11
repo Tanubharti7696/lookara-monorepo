@@ -12,11 +12,23 @@ const isCloudDb =
   connectionString.includes('neon.tech') ||
   connectionString.includes('supabase');
 
+function buildSslConfig() {
+  if (!isCloudDb) return undefined;
+  const rejectUnauthorized =
+    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false'
+      ? false
+      : process.env.NODE_ENV === 'production' || Boolean(process.env.DATABASE_SSL_CA);
+  return {
+    rejectUnauthorized,
+    ...(process.env.DATABASE_SSL_CA ? { ca: process.env.DATABASE_SSL_CA } : {}),
+  };
+}
+
 async function seed() {
   console.log('[Seed] Connecting to PostgreSQL at', connectionString.replace(/:[^:@]+@/, ':****@'));
   const client = new Client({
     connectionString,
-    ssl: isCloudDb ? { rejectUnauthorized: false } : undefined,
+    ssl: buildSslConfig(),
   });
   await client.connect();
 
@@ -167,15 +179,15 @@ async function seed() {
 
     // 9. Sample Tasks / Jobs
     const job1Res = await client.query(`
-      INSERT INTO jobs (job_code, organization_id, property_id, created_by_user_id, trade_code, title, description, urgency, service_type, payout_amount, status)
-      VALUES ('JOB-101', $1, $2, $3, 'plumbing', 'Emergency Leak Repair', 'Ceiling leak in master bathroom, urgent pipe repair needed.', 'emergency', 'repair', 680.00, 'in_progress')
+      INSERT INTO jobs (job_code, organization_id, property_id, created_by_user_id, trade_code, workflow_class, title, description, severity, source, service_type, payout_amount, status)
+      VALUES ('JOB-101', $1, $2, $3, 'PLUMB', 'emergency', 'Emergency Leak Repair', 'Ceiling leak in master bathroom, urgent pipe repair needed.', 'critical', 'pm_portal', 'repair', 680.00, 'in_progress')
       ON CONFLICT (job_code) DO NOTHING
       RETURNING id;
     `, [orgBlueWaveId, prop1Id, pmUserId]);
 
     const job2Res = await client.query(`
-      INSERT INTO jobs (job_code, organization_id, property_id, created_by_user_id, trade_code, title, description, urgency, service_type, payout_amount, status)
-      VALUES ('JOB-102', $1, $2, $3, 'hvac', 'HVAC Seasonal Service', 'Preventive inspection before peak summer season.', 'standard', 'maintenance', 340.00, 'accepted')
+      INSERT INTO jobs (job_code, organization_id, property_id, created_by_user_id, trade_code, workflow_class, title, description, severity, source, service_type, payout_amount, status)
+      VALUES ('JOB-102', $1, $2, $3, 'HVAC', 'maintenance', 'HVAC Seasonal Service', 'Preventive inspection before peak summer season.', 'medium', 'pm_portal', 'maintenance', 340.00, 'accepted')
       ON CONFLICT (job_code) DO NOTHING
       RETURNING id;
     `, [orgBlueWaveId, prop2Id, pmUserId]);
@@ -202,10 +214,82 @@ async function seed() {
       }
     }
 
-    // 11. Initial Audit Log Entry
+    // 11. Mobile App Evaluation Golden Fixtures (Task 9903, Incident 7771, Disputed Invoice, Quote Approval)
+    const verTaskId = '99999999-9999-9999-9999-999999999903';
     await client.query(`
-      INSERT INTO audit_events (event_code, actor_type, actor_user_id, target_type, target_id, category, event_type, summary)
-      VALUES ('AUDIT-001', 'system', $1, 'organization', $2, 'system', 'system.bootstrap', 'Platform database successfully seeded for Milestone 1.')
+      INSERT INTO jobs (id, job_code, organization_id, property_id, created_by_user_id, trade_code, workflow_class, title, description, severity, source, service_type, status)
+      VALUES ($1, 'JOB-VER-03', $2, $3, $4, 'HVAC', 'maintenance', 'Filter & Coil Clean Unit 203', 'Verification awaiting review', 'medium', 'pm_portal', 'routine', 'verification_pending')
+      ON CONFLICT (id) DO UPDATE SET
+        organization_id = EXCLUDED.organization_id,
+        property_id = EXCLUDED.property_id,
+        status = 'verification_pending';
+    `, [verTaskId, orgBlueWaveId, prop1Id, pmUserId]);
+
+    // Link Vendor Apex Maintenance to Task 9903
+    await client.query(`
+      INSERT INTO job_assignments (job_id, vendor_id, assignment_type, assigned_at, accepted_at)
+      SELECT $1, $2, 'manual', now() - interval '2 hours', now() - interval '90 minutes'
+      WHERE NOT EXISTS (SELECT 1 FROM job_assignments WHERE job_id = $1 AND vendor_id = $2);
+    `, [verTaskId, vendorId]);
+
+    // Ensure SLA snapshot for Task 9903
+    await client.query(`
+      INSERT INTO job_sla_snapshots (job_id, acknowledge_target, arrival_target, completion_target, verification_target, escalation_target, resolved_tier)
+      VALUES ($1, now() - interval '3 hours', now() - interval '2 hours', now() + interval '4 hours', now() + interval '6 hours', now() + interval '2 hours', 'organization')
+      ON CONFLICT (job_id) DO NOTHING;
+    `, [verTaskId]);
+
+    // Ensure sample evidence for Task 9903
+    await client.query(`
+      INSERT INTO job_evidence (job_id, uploaded_by_user_id, evidence_type, file_url, notes)
+      SELECT $1, $2, 'after_photo', 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=800', 'Filter replaced and evaporator coils cleaned.'
+      WHERE NOT EXISTS (SELECT 1 FROM job_evidence WHERE job_id = $1);
+    `, [verTaskId, vendorUserId]);
+
+    // Golden Incident 77777777-7777-7777-7777-777777777771
+    const goldenIncId = '77777777-7777-7777-7777-777777777771';
+    await client.query(`
+      INSERT INTO incidents (id, incident_code, organization_id, property_id, title, incident_type, severity, status, summary, estimated_cost_min, estimated_cost_max, owner_action_required)
+      VALUES ($1, 'INC-2026-7771', $2, $3, 'Main Line Backflow & Pressure Failure', 'emergency', 'critical', 'in_progress', 'Catastrophic backflow pressure drop in main mechanical room. Immediate shutoff valve access required.', 450.00, 1200.00, false)
+      ON CONFLICT (id) DO UPDATE SET
+        organization_id = EXCLUDED.organization_id,
+        property_id = EXCLUDED.property_id,
+        status = 'in_progress';
+    `, [goldenIncId, orgBlueWaveId, prop1Id]);
+
+    // Golden Disputed Invoice 34f01749-625e-4cfd-b309-b13f0f613b66
+    await client.query(`
+      INSERT INTO invoices (id, organization_id, amount, currency, status, due_date, pdf_url)
+      VALUES ('34f01749-625e-4cfd-b309-b13f0f613b66', $1, 450.00, 'USD', 'disputed', now() + interval '7 days', 'INV-DISPUTE-101')
+      ON CONFLICT (id) DO UPDATE SET
+        organization_id = EXCLUDED.organization_id,
+        status = 'disputed';
+    `, [orgBlueWaveId]);
+
+    // Golden Quote Approval 0b91ec16-a3e0-4a39-8208-25b964102188
+    await client.query(`
+      INSERT INTO approvals (id, approval_code, organization_id, property_id, owner_id, approval_type, title, description, amount, urgency, status, pm_recommendation)
+      VALUES ('0b91ec16-a3e0-4a39-8208-25b964102188', 'APP-101', $1, $2, $3, 'repair', 'Roof Shingle Replacement Quote', 'Estimate from Apex Roofing', 1850.00, 'urgent', 'awaiting_owner_decision', 'Approve quote before storm season.')
+      ON CONFLICT (id) DO UPDATE SET
+        organization_id = EXCLUDED.organization_id,
+        property_id = EXCLUDED.property_id,
+        status = 'awaiting_owner_decision';
+    `, [orgBlueWaveId, prop1Id, ownerId]);
+
+    // Golden Quote Review Task so GET /tasks?status=quote_review or awaiting_owner_decision returns non-empty
+    await client.query(`
+      INSERT INTO jobs (id, job_code, organization_id, property_id, created_by_user_id, trade_code, workflow_class, title, description, severity, source, service_type, payout_amount, quote_required, status)
+      VALUES ('99999999-9999-9999-9999-999999999904', 'JOB-QUOTE-04', $1, $2, $3, 'ROOF', 'maintenance', 'Roof Shingle Replacement Quote Review', 'Vendor submitted $1,850 quote for storm shingle replacement', 'high', 'pm_portal', 'repair', 1850.00, true, 'unassigned')
+      ON CONFLICT (id) DO UPDATE SET
+        organization_id = EXCLUDED.organization_id,
+        property_id = EXCLUDED.property_id,
+        quote_required = true;
+    `, [orgBlueWaveId, prop1Id, pmUserId]);
+
+    // 12. Initial Audit Log Entry
+    await client.query(`
+      INSERT INTO audit_events (event_code, actor_type, actor_user_id, organization_id, target_type, target_id, category, event_type, summary)
+      VALUES ('AUDIT-001', 'system', $1, $2, 'organization', $2, 'system', 'system.bootstrap', 'Platform database successfully seeded for Milestone 1.')
       ON CONFLICT (event_code) DO NOTHING;
     `, [pmUserId, orgBlueWaveId]);
 

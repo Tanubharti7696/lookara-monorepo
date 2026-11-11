@@ -117,7 +117,7 @@ export class TaskPolicyService {
       const adminRole = adminRes.rows[0].admin_role;
 
       // Read-only auditor or support admin cannot modify or verify tasks
-      if (['auditor', 'read_only'].includes(adminRole)) {
+      if (['auditor', 'read_only', 'support_admin'].includes(adminRole)) {
         if (operation !== 'view') {
           throw new ForbiddenException(`Platform admin role "${adminRole}" is restricted to read-only access on tasks`);
         }
@@ -171,7 +171,23 @@ export class TaskPolicyService {
         throw new ForbiddenException(`Task ${task.job_code} does not belong to your active organization`);
       }
 
-      // Step B: Role-based operation permissions
+      // Step B: Server-side validation of active membership in the organization (V9-03)
+      const membershipRes = await query(
+        `SELECT role, status FROM organization_users 
+         WHERE organization_id = $1 AND user_id = $2 AND status = 'active'`,
+        [user.activeOrganizationId, user.sub]
+      );
+      if (membershipRes?.rows) {
+        if (membershipRes.rows.length === 0) {
+          throw new ForbiddenException('User does not have an active membership in the organization');
+        }
+        const serverRole = membershipRes.rows[0].role;
+        if ((operation === 'cancel' || operation === 'pm_verify') && serverRole === 'viewer') {
+          throw new ForbiddenException(`Role "${serverRole}" is not authorized for task operation "${operation}"`);
+        }
+      }
+
+      // Step C: Role-based operation permissions
       if (operation === 'cancel' || operation === 'pm_verify') {
         if (user.activeRole === 'viewer') {
           throw new ForbiddenException(`Role "${user.activeRole}" is not authorized for task operation "${operation}"`);

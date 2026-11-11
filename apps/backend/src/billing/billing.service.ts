@@ -76,6 +76,41 @@ export class BillingService {
     return res.rows;
   }
 
+  async getApprovals(user: JwtPayload, type?: string) {
+    const orgId = user.activeOrganizationId;
+    if (!orgId) return [];
+
+    let sql = `
+      SELECT a.*, p.name AS property_name, p.address_line_1, p.city, p.state
+      FROM approvals a
+      LEFT JOIN properties p ON a.property_id = p.id
+      WHERE a.organization_id = $1
+    `;
+    const params: any[] = [orgId];
+    if (type && type !== 'quote') {
+      sql += ` AND a.approval_type = $2`;
+      params.push(type);
+    }
+    sql += ` ORDER BY a.created_at DESC`;
+
+    const res = await query(sql, params);
+    return res.rows;
+  }
+
+  async getApprovalById(user: JwtPayload, id: string) {
+    const orgId = user.activeOrganizationId;
+    if (!orgId) return null;
+
+    const res = await query(
+      `SELECT a.*, p.name AS property_name, p.address_line_1, p.city, p.state
+       FROM approvals a
+       LEFT JOIN properties p ON a.property_id = p.id
+       WHERE a.id = $1 AND a.organization_id = $2`,
+      [id, orgId]
+    );
+    return res.rows[0] || null;
+  }
+
   async addPaymentMethod(user: JwtPayload, methodData: any) {
     const orgId = user.activeOrganizationId;
     

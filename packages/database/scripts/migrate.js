@@ -13,11 +13,23 @@ const isCloudDb =
   connectionString.includes('neon.tech') ||
   connectionString.includes('supabase');
 
+function buildSslConfig() {
+  if (!isCloudDb) return undefined;
+  const rejectUnauthorized =
+    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false'
+      ? false
+      : process.env.NODE_ENV === 'production' || Boolean(process.env.DATABASE_SSL_CA);
+  return {
+    rejectUnauthorized,
+    ...(process.env.DATABASE_SSL_CA ? { ca: process.env.DATABASE_SSL_CA } : {}),
+  };
+}
+
 async function migrate() {
   console.log('[Migrate] Connecting to PostgreSQL at', connectionString.replace(/:[^:@]+@/, ':****@'));
   const client = new Client({
     connectionString,
-    ssl: isCloudDb ? { rejectUnauthorized: false } : undefined,
+    ssl: buildSslConfig(),
   });
   await client.connect();
 

@@ -249,6 +249,12 @@ export class VendorsService {
       let updatedJobRow: any;
       if (body.action === 'accept') {
         await client.query(`UPDATE job_assignments SET accepted_at = now() WHERE id = $1`, [assignRes.rows[0].id]);
+        // Also record or update job_offers history if table is present
+        await client.query(
+          `INSERT INTO job_offers (job_id, vendor_id, phase, offer_status, offered_at, responded_at)
+           VALUES ($1, $2, 'assigned', 'accepted', $3, now())`,
+          [jobId, vendorId, assignRes.rows[0].assigned_at || new Date()]
+        );
         const updatedJob = await client.query(
           `UPDATE jobs SET status = 'accepted', updated_at = now() WHERE id = $1 RETURNING *`,
           [jobId]
@@ -260,6 +266,7 @@ export class VendorsService {
         await this.auditService.recordEvent({
           actorType: 'vendor',
           actorUserId: user.sub,
+          organizationId: job.organization_id,
           targetType: 'job',
           targetId: jobId,
           category: 'dispatch',
@@ -270,7 +277,12 @@ export class VendorsService {
 
         return { status: 'accepted', job: updatedJobRow };
       } else {
-        // Declined
+        // Declined: Preserve full offer/decline history in job_offers before releasing active assignment (V9-11)
+        await client.query(
+          `INSERT INTO job_offers (job_id, vendor_id, phase, offer_status, offered_at, responded_at)
+           VALUES ($1, $2, 'assigned', 'declined', $3, now())`,
+          [jobId, vendorId, assignRes.rows[0].assigned_at || new Date()]
+        );
         await client.query(`DELETE FROM job_assignments WHERE id = $1`, [assignRes.rows[0].id]);
         const updatedJob = await client.query(
           `UPDATE jobs SET status = 'unassigned', updated_at = now() WHERE id = $1 RETURNING *`,
@@ -284,6 +296,7 @@ export class VendorsService {
         await this.auditService.recordEvent({
           actorType: 'vendor',
           actorUserId: user.sub,
+          organizationId: job.organization_id,
           targetType: 'job',
           targetId: jobId,
           category: 'dispatch',

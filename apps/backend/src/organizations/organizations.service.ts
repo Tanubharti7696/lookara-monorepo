@@ -20,8 +20,19 @@ export class OrganizationsService {
     const values: any[] = [];
     let idx = 1;
 
-    // Non-admin callers only see organizations they have active membership in
-    if (!user.isAdmin) {
+    // Non-admin callers only see organizations they have active membership in.
+    // If user is admin, verify platform_admin_access.
+    if (user.isAdmin) {
+      const adminRes = await query(
+        `SELECT admin_role, status FROM platform_admin_access WHERE user_id = $1 AND status = 'active'`,
+        [user.sub]
+      );
+      if (adminRes.rows.length === 0) {
+        // Inactive or invalid admin privileges; fallback to active memberships only
+        conditions.push(`id IN (SELECT organization_id FROM organization_users WHERE user_id = $${idx++} AND status = 'active')`);
+        values.push(user.sub);
+      }
+    } else {
       conditions.push(`id IN (SELECT organization_id FROM organization_users WHERE user_id = $${idx++} AND status = 'active')`);
       values.push(user.sub);
     }

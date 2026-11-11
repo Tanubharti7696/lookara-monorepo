@@ -318,8 +318,8 @@ export class DashboardService {
       paymentDisputes: parseInt(approvalsRes.rows[0]?.disputes || '0', 10),
     };
 
-    // 6. Today's Operations: scheduled tasks and turns within the requested date
-    const operationsRes = await query(`
+    // 6. Today's Operations: scheduled tasks and turns within the requested date (with fallback to active open operations)
+    let operationsRes = await query(`
       SELECT j.id, j.title, j.severity, j.workflow_class, j.scheduled_start, j.estimated_duration_minutes,
              p.id as property_id, p.name as property_name, p.city, p.state as region
       FROM jobs j
@@ -334,6 +334,20 @@ export class DashboardService {
       ORDER BY j.scheduled_start ASC NULLS LAST, j.created_at ASC
       LIMIT 10
     `, [params.date]);
+
+    if (operationsRes.rows.length === 0) {
+      operationsRes = await query(`
+        SELECT j.id, j.title, j.severity, j.workflow_class, j.scheduled_start, j.estimated_duration_minutes,
+               p.id as property_id, p.name as property_name, p.city, p.state as region
+        FROM jobs j
+        JOIN properties p ON j.property_id = p.id
+        WHERE j.status NOT IN ('cancelled', 'closed', 'completed')
+          ${orgId ? `AND j.organization_id = '${orgId}'` : ''}
+          ${params.propertyId ? `AND j.property_id = '${params.propertyId}'` : ''}
+        ORDER BY j.scheduled_start ASC NULLS LAST, j.created_at DESC
+        LIMIT 5
+      `);
+    }
 
     const todayOperations = operationsRes.rows.map((row: any) => {
       const startsAt = row.scheduled_start ? new Date(row.scheduled_start).toISOString() : new Date().toISOString();
@@ -377,6 +391,7 @@ export class DashboardService {
         affectedCount: slaRiskCount,
         action: {
           type: 'open_dispatch',
+          entityType: 'task',
           entityId: null,
           filters: { slaRisk: true },
         },
@@ -393,6 +408,7 @@ export class DashboardService {
         affectedCount: vendorCoverageGapCount,
         action: {
           type: 'open_vendor_coverage',
+          entityType: 'property',
           entityId: null,
           filters: {},
         },
@@ -410,6 +426,7 @@ export class DashboardService {
         affectedCount: approvals.workVerificationsPending,
         action: {
           type: 'open_task_queue',
+          entityType: 'task',
           entityId: null,
           filters: { status: 'verification_pending' },
         },
@@ -556,6 +573,7 @@ export class DashboardService {
           affectedCount: 1,
           action: {
             type: 'create_task_from_incident',
+            entityType: 'task',
             entityId: row.id,
             filters: {},
           },
@@ -594,6 +612,7 @@ export class DashboardService {
           affectedCount: 1,
           action: {
             type: 'open_task_queue',
+            entityType: 'task',
             entityId: row.id,
             filters: { slaRisk: true },
           },
@@ -629,7 +648,8 @@ export class DashboardService {
           affectedCount: 1,
           action: {
             type: 'open_vendor_coverage',
-            entityId: null,
+            entityType: 'property',
+            entityId: row.id,
             filters: { propertyId: row.id },
           },
         });

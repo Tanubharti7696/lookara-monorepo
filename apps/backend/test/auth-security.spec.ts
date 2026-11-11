@@ -141,26 +141,21 @@ describe('AuthService (AUTH-01 Regression Tests)', () => {
       }
     });
 
-    it('successfully updates password and invalidates refresh tokens when correct currentPassword is provided', async () => {
+    it('successfully updates password and increments token_version to invalidate sessions when correct currentPassword is provided', async () => {
       vi.mocked(db.query).mockResolvedValueOnce({
         rows: [{ id: 'u-1', email: 'user@example.com', password_hash: '$2b$10$storedHash' }],
       } as any);
       vi.mocked(authPkg.verifyPassword).mockResolvedValueOnce(true);
       vi.mocked(authPkg.hashPassword).mockResolvedValueOnce('$2b$10$brandNewHash');
-      vi.mocked(db.query).mockResolvedValueOnce({} as any); // UPDATE users
-      vi.mocked(db.query).mockResolvedValueOnce({} as any); // DELETE refresh_tokens
+      vi.mocked(db.query).mockResolvedValueOnce({} as any); // UPDATE users (with token_version increment)
       vi.mocked(db.query).mockResolvedValueOnce({} as any); // INSERT audit_events
 
       const res = await service.changePassword('u-1', 'correctOldPassword', 'newSecretPassword123');
 
       expect(res.success).toBe(true);
       expect(db.query).toHaveBeenCalledWith(
-        expect.stringMatching(/UPDATE users SET password_hash = \$1/),
+        expect.stringMatching(/UPDATE users SET password_hash = \$1, token_version = token_version \+ 1/),
         ['$2b$10$brandNewHash', 'u-1']
-      );
-      expect(db.query).toHaveBeenCalledWith(
-        expect.stringMatching(/DELETE FROM refresh_tokens WHERE user_id = \$1/),
-        ['u-1']
       );
     });
   });

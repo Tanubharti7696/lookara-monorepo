@@ -6,6 +6,7 @@ import type { JwtPayload } from '@lookara/auth';
 export interface RecordAuditInput {
   actorType: 'admin' | 'pm' | 'vendor' | 'owner' | 'system';
   actorUserId?: string;
+  organizationId?: string;
   targetType: string;
   targetId?: string;
   category: string;
@@ -19,27 +20,59 @@ export interface RecordAuditInput {
 export class AuditService {
   async recordEvent(input: RecordAuditInput) {
     const eventCode = `AUD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const sql = `
-      INSERT INTO audit_events (
-        event_code, actor_type, actor_user_id, target_type, target_id,
-        category, event_type, summary, metadata, session_label
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-      RETURNING *;
-    `;
-    const res = await query(sql, [
-      eventCode,
-      input.actorType,
-      input.actorUserId || null,
-      input.targetType,
-      input.targetId || null,
-      input.category,
-      input.eventType,
-      input.summary,
-      JSON.stringify(input.metadata || {}),
-      input.sessionLabel || null,
-    ]);
-    return res.rows[0];
+    const orgId = input.organizationId || input.metadata?.organizationId || input.metadata?.orgId || null;
+
+    let res: any;
+    try {
+      const sql = `
+        INSERT INTO audit_events (
+          event_code, actor_type, actor_user_id, organization_id, target_type, target_id,
+          category, event_type, summary, metadata, session_label
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING *;
+      `;
+      res = await query(sql, [
+        eventCode,
+        input.actorType,
+        input.actorUserId || null,
+        orgId,
+        input.targetType,
+        input.targetId || null,
+        input.category,
+        input.eventType,
+        input.summary,
+        JSON.stringify(input.metadata || {}),
+        input.sessionLabel || null,
+      ]);
+    } catch (err: any) {
+      // Fallback if organization_id column is not yet migrated
+      if (err?.code === '42703') {
+        const sql = `
+          INSERT INTO audit_events (
+            event_code, actor_type, actor_user_id, target_type, target_id,
+            category, event_type, summary, metadata, session_label
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          RETURNING *;
+        `;
+        res = await query(sql, [
+          eventCode,
+          input.actorType,
+          input.actorUserId || null,
+          input.targetType,
+          input.targetId || null,
+          input.category,
+          input.eventType,
+          input.summary,
+          JSON.stringify(input.metadata || {}),
+          input.sessionLabel || null,
+        ]);
+      } else {
+        throw err;
+      }
+    }
+    return res?.rows?.[0];
   }
 
   async getEvents(
@@ -99,11 +132,13 @@ export class AuditService {
         throw new ForbiddenException('User is not an active member of the requested organization');
       }
 
-      // Strictly scope to resources belonging exclusively to the user's active organization
-      // Exclude generic "OR actor_user_id = user.sub" which leaked other organizations' activities
+      // Strictly scope to resources belonging exclusively to the user's active organization (V9-07: first-class organization_id + entity scoping)
       conditions.push(`(
-        target_id IN (SELECT id FROM jobs WHERE organization_id = $${paramIdx}::uuid)
+        organization_id = $${paramIdx}::uuid
+        OR target_id IN (SELECT id FROM jobs WHERE organization_id = $${paramIdx}::uuid)
         OR target_id IN (SELECT id FROM properties WHERE organization_id = $${paramIdx}::uuid)
+        OR target_id IN (SELECT id FROM incidents WHERE organization_id = $${paramIdx}::uuid)
+        OR target_id IN (SELECT id FROM approvals WHERE organization_id = $${paramIdx}::uuid)
         OR target_id = $${paramIdx}::uuid
         OR (metadata->>'organizationId') = $${paramIdx}::text
         OR (metadata->>'orgId') = $${paramIdx}::text

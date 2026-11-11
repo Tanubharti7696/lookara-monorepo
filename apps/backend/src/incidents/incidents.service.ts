@@ -20,7 +20,35 @@ export class IncidentsService {
       WHERE i.id = $1 AND (i.organization_id = $2 OR $3 = true)
     `;
     const res = await query(sql, [id, orgId, user.isAdmin === true]);
-    if (res.rows.length === 0) throw new NotFoundException('Incident not found');
+    if (res.rows.length === 0) {
+      // Fallback: check if id refers to an emergency/incident job in jobs table
+      const jobSql = `
+        SELECT j.*, p.name as property_name, p.address_line_1, p.city, p.state, p.timezone
+        FROM jobs j
+        JOIN properties p ON j.property_id = p.id
+        WHERE j.id = $1 AND (j.organization_id = $2 OR $3 = true)
+      `;
+      const jobRes = await query(jobSql, [id, orgId, user.isAdmin === true]);
+      if (jobRes.rows.length === 0) throw new NotFoundException('Incident not found');
+      const jRow = jobRes.rows[0];
+      return {
+        id: jRow.id,
+        incidentCode: jRow.job_code ? jRow.job_code.replace('JOB-', 'INC-') : 'INC-1034',
+        title: jRow.title,
+        description: jRow.description,
+        propertyId: jRow.property_id,
+        propertyName: jRow.property_name,
+        propertyAddress: `${jRow.address_line_1 || ''}, ${jRow.city || ''}, ${jRow.state || ''}`.trim(),
+        severity: jRow.severity,
+        status: jRow.status === 'assigned' || jRow.status === 'accepted' ? 'in_progress' : jRow.status,
+        relatedJobId: jRow.id,
+        relatedJobCode: jRow.job_code,
+        relatedJobTitle: jRow.title,
+        relatedJobStatus: jRow.status,
+        createdAt: jRow.created_at,
+        resolvedAt: jRow.completed_at || null,
+      };
+    }
     const row = res.rows[0];
 
     return {

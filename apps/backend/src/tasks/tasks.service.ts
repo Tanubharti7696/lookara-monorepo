@@ -1,6 +1,7 @@
 // apps/backend/src/tasks/tasks.service.ts
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
 import { query } from '@lookara/database';
+import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import type { JwtPayload } from '@lookara/auth';
 
@@ -49,8 +50,22 @@ export class TasksService {
     const values: any[] = [];
     let idx = 1;
 
-    // Organization or role filter
-    if (user.activeOrganizationId && !user.isVendor) {
+    // Organization or role filter (V9-03: Ensure users without org or role scope are denied)
+    if (user.isAdmin) {
+      // Platform admin: can see all or filter by org if provided in options or user scope
+      if (user.activeOrganizationId) {
+        conditions.push(`j.organization_id = $${idx++}`);
+        values.push(user.activeOrganizationId);
+      }
+    } else if (user.activeOrganizationId && !user.isVendor) {
+      // Validate active membership in the organization
+      const memRes = await query(
+        `SELECT role, status FROM organization_users WHERE organization_id = $1 AND user_id = $2 AND status = 'active'`,
+        [user.activeOrganizationId, user.sub]
+      );
+      if (memRes.rows.length === 0) {
+        throw new ForbiddenException('User does not have an active membership in this organization');
+      }
       conditions.push(`j.organization_id = $${idx++}`);
       values.push(user.activeOrganizationId);
     } else if (user.isVendor || user.activePortal === 'vendor') {
@@ -58,7 +73,7 @@ export class TasksService {
       if (!vendorId) throw new ForbiddenException('No active vendor profile found');
       conditions.push(`j.id IN (SELECT job_id FROM job_assignments WHERE vendor_id = $${idx++})`);
       values.push(vendorId);
-    } else if (user.isOwner && !user.isAdmin) {
+    } else if (user.isOwner) {
       // Owner only sees jobs on their properties
       conditions.push(`j.property_id IN (
         SELECT po.property_id FROM property_owners po
@@ -66,6 +81,8 @@ export class TasksService {
         WHERE o.user_id = $${idx++} AND po.relationship_status = 'active'
       )`);
       values.push(user.sub);
+    } else {
+      throw new ForbiddenException('User has no active organization, vendor, or property ownership scope to list tasks');
     }
 
     if (options.propertyId) {
@@ -73,8 +90,14 @@ export class TasksService {
       values.push(options.propertyId);
     }
     if (options.status) {
-      conditions.push(`j.status = $${idx++}`);
-      values.push(options.status);
+      if (options.status === 'quote_review' || options.status === 'awaiting_owner_decision') {
+        conditions.push(`(j.status = $${idx} OR j.quote_required = true)`);
+        values.push(options.status);
+        idx++;
+      } else {
+        conditions.push(`j.status = $${idx++}`);
+        values.push(options.status);
+      }
     }
     if (options.urgency) {
       conditions.push(`j.severity = $${idx++}`);
@@ -131,7 +154,7 @@ export class TasksService {
     const sql = `
       SELECT j.*, p.name AS property_name, p.address_line_1, p.city, p.state, p.timezone,
              u.full_name AS created_by_name,
-             v.id AS vendor_id, v.display_name AS vendor_name, v.phone AS vendor_phone,
+             v.id AS vendor_id, v.display_name AS vendor_name, vu.phone AS vendor_phone,
              ov.relationship_status AS vendor_status,
              jss.resolved_tier AS sla_resolved_tier,
              jss.acknowledge_target AS sla_acknowledge_target,
@@ -147,6 +170,7 @@ export class TasksService {
         ORDER BY job_id, assigned_at DESC
       ) ja ON j.id = ja.job_id
       LEFT JOIN vendors v ON ja.vendor_id = v.id
+      LEFT JOIN users vu ON v.user_id = vu.id
       LEFT JOIN organization_vendors ov ON v.id = ov.vendor_id AND ov.organization_id = j.organization_id
       LEFT JOIN job_sla_snapshots jss ON j.id = jss.job_id
       WHERE j.id = $1
@@ -279,7 +303,7 @@ export class TasksService {
       }
     }
 
-    const jobCode = `JOB-${Date.now().toString().slice(-4)}${Math.floor(1000 + Math.random() * 9000)}`;
+    // Collision-proof job code generation with retry on Postgres unique violation 23505 (V9-10)
     const sql = `
       INSERT INTO jobs (
         job_code, organization_id, property_id, created_by_user_id,
@@ -289,23 +313,39 @@ export class TasksService {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'unassigned')
       RETURNING *;
     `;
-    const res = await query(sql, [
-      jobCode,
-      orgId,
-      dto.propertyId,
-      user.sub,
-      dto.tradeCode || 'GEN',
-      dto.workflowClass || 'maintenance',
-      dto.subtype || null,
-      dto.severity || 'low',
-      dto.source || 'pm_portal',
-      dto.title,
-      dto.description || null,
-      dto.serviceType || 'maintenance',
-      dto.payoutAmount || null,
-      dto.scheduledStart ? new Date(dto.scheduledStart) : null,
-      dto.estimatedDurationMinutes || null,
-    ]);
+
+    let res: any;
+    let attempts = 0;
+    while (attempts < 3) {
+      attempts++;
+      const randHex = randomBytes(3).toString('hex').toUpperCase();
+      const jobCode = `JOB-${Date.now().toString().slice(-4)}-${randHex}`;
+      try {
+        res = await query(sql, [
+          jobCode,
+          orgId,
+          dto.propertyId,
+          user.sub,
+          dto.tradeCode || 'GEN',
+          dto.workflowClass || 'maintenance',
+          dto.subtype || null,
+          dto.severity || 'low',
+          dto.source || 'pm_portal',
+          dto.title,
+          dto.description || null,
+          dto.serviceType || 'maintenance',
+          dto.payoutAmount || null,
+          dto.scheduledStart ? new Date(dto.scheduledStart) : null,
+          dto.estimatedDurationMinutes || null,
+        ]);
+        break;
+      } catch (err: any) {
+        if (err?.code === '23505' && attempts < 3) {
+          continue;
+        }
+        throw err;
+      }
+    }
     const task = res.rows[0];
 
     // Canonical SLA Snapshotting Hierarchy:
@@ -314,7 +354,8 @@ export class TasksService {
     // Inherits clocks through ?? (nullish coalescing) so explicitly set zeros or lower tiers are never silently discarded.
     const sev = dto.severity || 'low';
 
-    // Baseline fallback values
+    // 5-Tier SLA Clock-by-Clock Inheritance Architecture (V9-02)
+    // Priority: Lookara Base -> Market -> Organization -> Property -> Task Override
     let resolvedTier = 'lookara_base';
     let slaTemplateId: string | null = null;
     let acknowledgeMins = sev === 'critical' ? 15 : sev === 'high' ? 30 : 60;
@@ -323,101 +364,95 @@ export class TasksService {
     let escalationMins = sev === 'critical' ? 30 : sev === 'high' ? 60 : 120;
     let verificationMins = 120;
 
-    // 1. Task-level Override (Highest Priority Tier)
+    // Level 1: Lookara Base Default (uniquely scoped: organization_id IS NULL AND market IS NULL)
+    const baseSlaRes = await query(
+      `SELECT * FROM sla_templates 
+       WHERE organization_id IS NULL AND market IS NULL AND severity = $1 
+       ORDER BY created_at ASC LIMIT 1`,
+      [sev]
+    );
+    if (baseSlaRes && baseSlaRes.rows && baseSlaRes.rows.length > 0) {
+      const baseRow = baseSlaRes.rows[0];
+      slaTemplateId = baseRow.id;
+      resolvedTier = 'lookara_base';
+      acknowledgeMins = baseRow.acknowledge_mins ?? acknowledgeMins;
+      arrivalMins = baseRow.arrival_mins ?? arrivalMins;
+      completionMins = baseRow.completion_mins ?? completionMins;
+      escalationMins = baseRow.escalation_mins ?? escalationMins;
+      verificationMins = baseRow.verification_mins ?? verificationMins;
+    }
+
+    // Level 2: Market Tier (based on property market / city)
+    if (dto.propertyId) {
+      const propMarketRes = await query(`SELECT market, city FROM properties WHERE id = $1`, [dto.propertyId]);
+      const marketVal = propMarketRes?.rows[0]?.market || propMarketRes?.rows[0]?.city;
+      if (marketVal) {
+        const marketSlaRes = await query(
+          `SELECT * FROM sla_templates 
+           WHERE market = $1 AND severity = $2 
+           ORDER BY created_at DESC LIMIT 1`,
+          [marketVal, sev]
+        );
+        if (marketSlaRes && marketSlaRes.rows && marketSlaRes.rows.length > 0) {
+          const marketRow = marketSlaRes.rows[0];
+          slaTemplateId = marketRow.id;
+          resolvedTier = 'market';
+          acknowledgeMins = marketRow.acknowledge_mins ?? acknowledgeMins;
+          arrivalMins = marketRow.arrival_mins ?? arrivalMins;
+          completionMins = marketRow.completion_mins ?? completionMins;
+          escalationMins = marketRow.escalation_mins ?? escalationMins;
+          verificationMins = marketRow.verification_mins ?? verificationMins;
+        }
+      }
+    }
+
+    // Level 3: Organization Tier
+    if (orgId) {
+      const orgSlaRes = await query(
+        `SELECT * FROM sla_templates 
+         WHERE organization_id = $1 AND severity = $2 
+         ORDER BY created_at DESC LIMIT 1`,
+        [orgId, sev]
+      );
+      if (orgSlaRes && orgSlaRes.rows && orgSlaRes.rows.length > 0) {
+        const orgRow = orgSlaRes.rows[0];
+        slaTemplateId = orgRow.id;
+        resolvedTier = 'organization';
+        acknowledgeMins = orgRow.acknowledge_mins ?? acknowledgeMins;
+        arrivalMins = orgRow.arrival_mins ?? arrivalMins;
+        completionMins = orgRow.completion_mins ?? completionMins;
+        escalationMins = orgRow.escalation_mins ?? escalationMins;
+        verificationMins = orgRow.verification_mins ?? verificationMins;
+      }
+    }
+
+    // Level 4: Property Override Tier
+    if (dto.propertyId) {
+      const propOverrideRes = await query(
+        `SELECT st.* FROM sla_templates st
+         JOIN property_sla_overrides pso ON st.id = pso.sla_template_id
+         WHERE pso.property_id = $1 LIMIT 1`,
+        [dto.propertyId]
+      );
+      if (propOverrideRes && propOverrideRes.rows && propOverrideRes.rows.length > 0) {
+        const propRow = propOverrideRes.rows[0];
+        slaTemplateId = propRow.id;
+        resolvedTier = 'property';
+        acknowledgeMins = propRow.acknowledge_mins ?? acknowledgeMins;
+        arrivalMins = propRow.arrival_mins ?? arrivalMins;
+        completionMins = propRow.completion_mins ?? completionMins;
+        escalationMins = propRow.escalation_mins ?? escalationMins;
+        verificationMins = propRow.verification_mins ?? verificationMins;
+      }
+    }
+
+    // Level 5: Task-level Override (Highest Priority Tier)
     if (dto.slaOverride) {
       resolvedTier = 'task_override';
       acknowledgeMins = dto.slaOverride.acknowledgeMins ?? acknowledgeMins;
       arrivalMins = dto.slaOverride.arrivalMins ?? arrivalMins;
       completionMins = dto.slaOverride.completionMins ?? completionMins;
       escalationMins = dto.slaOverride.escalationMins ?? escalationMins;
-    } else {
-      // 2. Property Override Tier
-      let matched = false;
-      if (dto.propertyId) {
-        const propOverrideRes = await query(
-          `SELECT st.* FROM sla_templates st
-           JOIN property_sla_overrides pso ON st.id = pso.sla_template_id
-           WHERE pso.property_id = $1 LIMIT 1`,
-          [dto.propertyId]
-        );
-        if (propOverrideRes.rows.length > 0) {
-          resolvedTier = 'property';
-          const propRow = propOverrideRes.rows[0];
-          slaTemplateId = propRow.id;
-          acknowledgeMins = propRow.acknowledge_mins ?? acknowledgeMins;
-          arrivalMins = propRow.arrival_mins ?? arrivalMins;
-          completionMins = propRow.completion_mins ?? completionMins;
-          escalationMins = propRow.escalation_mins ?? escalationMins;
-          verificationMins = propRow.verification_mins ?? verificationMins;
-          matched = true;
-        }
-      }
-
-      // 3. Market Tier (based on property market / city)
-      if (!matched && dto.propertyId) {
-        const propMarketRes = await query(`SELECT market, city FROM properties WHERE id = $1`, [dto.propertyId]);
-        const marketVal = propMarketRes.rows[0]?.market || propMarketRes.rows[0]?.city;
-        if (marketVal) {
-          const marketSlaRes = await query(
-            `SELECT * FROM sla_templates 
-             WHERE market = $1 AND severity = $2 
-             ORDER BY created_at DESC LIMIT 1`,
-            [marketVal, sev]
-          );
-          if (marketSlaRes.rows.length > 0) {
-            resolvedTier = 'market';
-            const marketRow = marketSlaRes.rows[0];
-            slaTemplateId = marketRow.id;
-            acknowledgeMins = marketRow.acknowledge_mins ?? acknowledgeMins;
-            arrivalMins = marketRow.arrival_mins ?? arrivalMins;
-            completionMins = marketRow.completion_mins ?? completionMins;
-            escalationMins = marketRow.escalation_mins ?? escalationMins;
-            verificationMins = marketRow.verification_mins ?? verificationMins;
-            matched = true;
-          }
-        }
-      }
-
-      // 4. Organization Tier
-      if (!matched && orgId) {
-        const orgSlaRes = await query(
-          `SELECT * FROM sla_templates 
-           WHERE organization_id = $1 AND severity = $2 
-           ORDER BY created_at DESC LIMIT 1`,
-          [orgId, sev]
-        );
-        if (orgSlaRes.rows.length > 0) {
-          resolvedTier = 'organization';
-          const orgRow = orgSlaRes.rows[0];
-          slaTemplateId = orgRow.id;
-          acknowledgeMins = orgRow.acknowledge_mins ?? acknowledgeMins;
-          arrivalMins = orgRow.arrival_mins ?? arrivalMins;
-          completionMins = orgRow.completion_mins ?? completionMins;
-          escalationMins = orgRow.escalation_mins ?? escalationMins;
-          verificationMins = orgRow.verification_mins ?? verificationMins;
-          matched = true;
-        }
-      }
-
-      // 5. Lookara Base Default (uniquely scoped: organization_id IS NULL AND market IS NULL)
-      if (!matched) {
-        const baseSlaRes = await query(
-          `SELECT * FROM sla_templates 
-           WHERE organization_id IS NULL AND market IS NULL AND severity = $1 
-           ORDER BY created_at ASC LIMIT 1`,
-          [sev]
-        );
-        if (baseSlaRes.rows.length > 0) {
-          resolvedTier = 'lookara_base';
-          const baseRow = baseSlaRes.rows[0];
-          slaTemplateId = baseRow.id;
-          acknowledgeMins = baseRow.acknowledge_mins ?? acknowledgeMins;
-          arrivalMins = baseRow.arrival_mins ?? arrivalMins;
-          completionMins = baseRow.completion_mins ?? completionMins;
-          escalationMins = baseRow.escalation_mins ?? escalationMins;
-          verificationMins = baseRow.verification_mins ?? verificationMins;
-        }
-      }
     }
 
     const now = new Date();
@@ -477,9 +512,9 @@ export class TasksService {
       timestampUpdate = ', completed_at = COALESCE(completed_at, now())';
     }
 
-    // Atomic transition: ensures status has not concurrently changed from expected task.status (TASK-03)
+    // Atomic transition: ensures status has not concurrently changed from expected task.status (V9-05 / TASK-03)
     const res = await query(
-      `UPDATE jobs SET status = $1, updated_at = now()${timestampUpdate} WHERE id = $2 AND (status = $3 OR status = $1) RETURNING *`,
+      `UPDATE jobs SET status = $1, updated_at = now()${timestampUpdate} WHERE id = $2 AND status = $3 RETURNING *`,
       [newStatus, id, task.status]
     );
     if (!res || !res.rows || res.rows.length === 0) {
@@ -546,7 +581,7 @@ export class TasksService {
       `SELECT je.*, u.full_name AS uploaded_by_name, v.display_name AS vendor_name
        FROM job_evidence je
        LEFT JOIN users u ON je.uploaded_by_user_id = u.id
-       LEFT JOIN vendors v ON je.vendor_id = v.id
+       LEFT JOIN vendors v ON v.user_id = je.uploaded_by_user_id
        WHERE je.job_id = $1
        ORDER BY je.created_at DESC`,
       [jobId]
@@ -572,22 +607,44 @@ export class TasksService {
       if (vRes.rows.length > 0) vendorId = vRes.rows[0].id;
     }
 
-    const res = await query(
-      `INSERT INTO job_evidence (
-        job_id, vendor_id, uploaded_by_user_id, evidence_type, file_url, notes, gps_latitude, gps_longitude
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING *`,
-      [
-        jobId,
-        vendorId,
-        user.sub,
-        data.evidenceType,
-        data.fileUrl,
-        data.notes || null,
-        data.gpsLatitude || null,
-        data.gpsLongitude || null,
-      ]
-    );
+    let res: any;
+    try {
+      res = await query(
+        `INSERT INTO job_evidence (
+          job_id, vendor_id, uploaded_by_user_id, evidence_type, file_url, notes, gps_latitude, gps_longitude
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`,
+        [
+          jobId,
+          vendorId,
+          user.sub,
+          data.evidenceType,
+          data.fileUrl,
+          data.notes || null,
+          data.gpsLatitude || null,
+          data.gpsLongitude || null,
+        ]
+      );
+    } catch (err: any) {
+      // Fallback if job_evidence table uses minimal columns (job_id, uploaded_by_user_id, evidence_type, file_url, notes)
+      if (err?.code === '42703') {
+        res = await query(
+          `INSERT INTO job_evidence (
+            job_id, uploaded_by_user_id, evidence_type, file_url, notes
+           ) VALUES ($1, $2, $3, $4, $5)
+           RETURNING *`,
+          [
+            jobId,
+            user.sub,
+            data.evidenceType,
+            data.fileUrl,
+            data.notes || null,
+          ]
+        );
+      } else {
+        throw err;
+      }
+    }
 
     const evidence = res.rows[0];
 
@@ -622,9 +679,12 @@ export class TasksService {
       const res = await query(
         `UPDATE jobs 
          SET status = 'closed', verified_at = now(), verified_by_user_id = $1, updated_at = now()
-         WHERE id = $2 RETURNING *`,
-        [user.sub, jobId]
+         WHERE id = $2 AND status = $3 RETURNING *`,
+        [user.sub, jobId, task.status]
       );
+      if (!res || !res.rows || res.rows.length === 0) {
+        throw new ConflictException(`Concurrent verification conflict: Task status has changed from "${task.status}". Please refresh.`);
+      }
 
       await this.auditService.recordEvent({
         actorType: 'pm',
@@ -643,17 +703,20 @@ export class TasksService {
         throw new BadRequestException('A non-empty reason is required when rejecting work for rework');
       }
 
-      // Canonical architecture: ordinary rework normally remains on the original Task
+      // Canonical architecture: ordinary rework normally remains on the original Task with optimistic concurrency check (V9-05)
       const reworkRes = await query(
         `UPDATE jobs 
          SET status = 'in_progress', 
              rework_reason = $1, 
              rework_count = COALESCE(rework_count, 0) + 1, 
              updated_at = now() 
-         WHERE id = $2 
+         WHERE id = $2 AND status = $3
          RETURNING *`,
-        [data.reworkReason, jobId]
+        [data.reworkReason, jobId, task.status]
       );
+      if (!reworkRes || !reworkRes.rows || reworkRes.rows.length === 0) {
+        throw new ConflictException(`Concurrent verification conflict: Task status has changed from "${task.status}". Please refresh.`);
+      }
       const updatedTask = reworkRes.rows[0];
 
       await this.auditService.recordEvent({

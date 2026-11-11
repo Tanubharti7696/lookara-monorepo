@@ -11,12 +11,20 @@ const isCloudDb =
   connectionString.includes('neon.tech') ||
   connectionString.includes('supabase');
 
-// In production cloud environments, verify TLS certificates using CA or platform defaults
-const sslConfig = isCloudDb
-  ? process.env.NODE_ENV === 'production' && process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false'
-    ? { rejectUnauthorized: true }
-    : { rejectUnauthorized: false }
-  : undefined;
+// In production cloud environments, verify TLS certificates using CA or platform defaults (V9-09)
+function buildSslConfig() {
+  if (!isCloudDb) return undefined;
+  const rejectUnauthorized =
+    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false'
+      ? false
+      : process.env.NODE_ENV === 'production' || Boolean(process.env.DATABASE_SSL_CA);
+  return {
+    rejectUnauthorized,
+    ...(process.env.DATABASE_SSL_CA ? { ca: process.env.DATABASE_SSL_CA } : {}),
+  };
+}
+
+const sslConfig = buildSslConfig();
 
 export const pool = new Pool({
   connectionString,

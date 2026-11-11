@@ -234,10 +234,18 @@ export class AuthService {
 
     const userContext = await this.resolveUserContext(userId);
 
-    // Verify membership in requested organization
+    // Verify membership in requested organization (or super_admin platform access)
     const targetMembership = userContext.memberships.find((m) => m.organizationId === dto.organizationId);
-    if (!targetMembership && !userContext.isAdmin) {
-      throw new ForbiddenException('You do not have access to this organization workspace');
+    if (!targetMembership) {
+      if (userContext.isAdmin && (userContext.adminRole === 'super_admin' || userContext.adminRole === 'operations_admin')) {
+        // Platform admins with elevated privileges can switch to any active org
+        const orgRes = await query(`SELECT id, name, slug FROM organizations WHERE id = $1 AND status = 'active'`, [dto.organizationId]);
+        if (orgRes.rows.length === 0) {
+          throw new NotFoundException('Active organization not found');
+        }
+      } else {
+        throw new ForbiddenException('You do not have access to this organization workspace');
+      }
     }
 
     const targetPortal: PortalType = dto.portal || 'pm';
@@ -408,13 +416,11 @@ export class AuthService {
 
     const newHash = await hashPassword(newPassword);
 
+    // Atomically update password hash and increment token_version to immediately revoke all active refresh tokens (V9-01)
     await query(
-      `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+      `UPDATE users SET password_hash = $1, token_version = token_version + 1, updated_at = NOW() WHERE id = $2`,
       [newHash, userId],
     );
-
-    // Invalidate/revoke active refresh tokens on password change
-    await query(`DELETE FROM refresh_tokens WHERE user_id = $1`, [userId]);
 
     // Audit log (actor_type must be in: 'admin', 'pm', 'vendor', 'owner', 'system')
     try {

@@ -8,7 +8,7 @@ vi.mock('@lookara/database', () => ({
   query: vi.fn(),
 }));
 
-describe('SLA Hierarchy & Clock Inheritance (SLA-06 Regression Tests)', () => {
+describe('SLA Hierarchy & Clock Inheritance (V9-02 Regression Tests)', () => {
   let tasksService: TasksService;
   let auditServiceMock: any;
   let taskPolicyMock: any;
@@ -33,6 +33,104 @@ describe('SLA Hierarchy & Clock Inheritance (SLA-06 Regression Tests)', () => {
     tasksService = new TasksService(auditServiceMock, taskPolicyMock);
   });
 
+  it('correctly resolves 5-tier clock-by-clock inheritance matching client test case', async () => {
+    // Client test case:
+    // Base: Response 60, Arrival 120, Completion 480, Escalation 60
+    // Market: Arrival 90
+    // Org: Response 30
+    // Property: Completion 300
+    // Task Override: Escalation 20
+    // Final Resolved SLA: Response 30 / Arrival 90 / Completion 300 / Escalation 20
+    vi.mocked(db.query)
+      // 1. Property validation
+      .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any)
+      // 2. Insert job
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'task-5tier-1',
+          job_code: 'JOB-SLA-5TIER',
+          organization_id: 'org-1-uuid',
+          property_id: 'prop-1',
+          severity: 'high',
+          title: '5-Tier SLA Test',
+        }],
+      } as any)
+      // 3. Base SLA query (Level 1)
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sla-base-id',
+          acknowledge_mins: 60,
+          arrival_mins: 120,
+          completion_mins: 480,
+          escalation_mins: 60,
+          verification_mins: 120,
+        }],
+      } as any)
+      // 4. Property market query (Level 2)
+      .mockResolvedValueOnce({ rows: [{ market: 'SouthFlorida', city: 'Miami' }] } as any)
+      // 5. Market SLA query
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sla-market-id',
+          arrival_mins: 90, // Market overrides arrival to 90
+        }],
+      } as any)
+      // 6. Organization SLA query (Level 3)
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sla-org-id',
+          acknowledge_mins: 30, // Org overrides response to 30
+        }],
+      } as any)
+      // 7. Property SLA override query (Level 4)
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sla-prop-id',
+          completion_mins: 300, // Property overrides completion to 300
+        }],
+      } as any)
+      // 8. Insert job SLA snapshot
+      .mockResolvedValueOnce({ rows: [] } as any);
+
+    await tasksService.create(mockUser, {
+      propertyId: 'prop-1',
+      tradeCode: 'HVAC',
+      workflowClass: 'maintenance',
+      severity: 'high',
+      source: 'pm_portal',
+      title: '5-Tier SLA Test',
+      serviceType: 'repair',
+      slaOverride: {
+        escalationMins: 20, // Task overrides escalation to 20
+      },
+    });
+
+    const snapshotCall = vi.mocked(db.query).mock.calls[7];
+    expect(snapshotCall).toBeDefined();
+    expect(snapshotCall[1][7]).toBe('task_override'); // resolved_tier
+
+    const now = Date.now();
+    const ackTarget = new Date(snapshotCall[1][2]).getTime();
+    const arrTarget = new Date(snapshotCall[1][3]).getTime();
+    const compTarget = new Date(snapshotCall[1][4]).getTime();
+    const escTarget = new Date(snapshotCall[1][6]).getTime();
+
+    const diffAck = Math.round((ackTarget - now) / 60000);
+    const diffArr = Math.round((arrTarget - now) / 60000);
+    const diffComp = Math.round((compTarget - now) / 60000);
+    const diffEsc = Math.round((escTarget - now) / 60000);
+
+    // Assert the exact client requirements:
+    // Response: 30 (Org)
+    // Arrival: 90 (Market)
+    // Completion: 300 (Property)
+    // Escalation: 20 (Task Override)
+    expect(diffAck).toBe(30);
+    expect(diffArr).toBe(90);
+    expect(diffComp).toBe(300);
+    expect(diffEsc).toBe(20);
+  });
+
   it('inherits unspecified clocks through nullish coalescing (??) when task override specifies only arrival', async () => {
     // 1. Property check
     vi.mocked(db.query)
@@ -48,7 +146,17 @@ describe('SLA Hierarchy & Clock Inheritance (SLA-06 Regression Tests)', () => {
           title: 'Roof Repair',
         }],
       } as any)
-      // 3. Insert SLA Snapshot
+      // 3. Base SLA query
+      .mockResolvedValueOnce({ rows: [] } as any)
+      // 4. Property market query
+      .mockResolvedValueOnce({ rows: [{ market: 'Orlando', city: 'Orlando' }] } as any)
+      // 5. Market SLA query
+      .mockResolvedValueOnce({ rows: [] } as any)
+      // 6. Org SLA query
+      .mockResolvedValueOnce({ rows: [] } as any)
+      // 7. Property SLA query
+      .mockResolvedValueOnce({ rows: [] } as any)
+      // 8. Insert SLA Snapshot
       .mockResolvedValueOnce({ rows: [] } as any);
 
     // Override only arrivalMins = 45; acknowledgeMins, completionMins, escalationMins should inherit high baseline defaults
@@ -65,7 +173,7 @@ describe('SLA Hierarchy & Clock Inheritance (SLA-06 Regression Tests)', () => {
       },
     });
 
-    const snapshotCall = vi.mocked(db.query).mock.calls[2];
+    const snapshotCall = vi.mocked(db.query).mock.calls[7];
     expect(snapshotCall[1][7]).toBe('task_override'); // resolved_tier
 
     const now = Date.now();
@@ -99,10 +207,6 @@ describe('SLA Hierarchy & Clock Inheritance (SLA-06 Regression Tests)', () => {
           title: 'Emergency Power Loss',
         }],
       } as any) // Insert job
-      .mockResolvedValueOnce({ rows: [] } as any) // No property override
-      .mockResolvedValueOnce({ rows: [{ market: 'Orlando', city: 'Orlando' }] } as any) // Property market query
-      .mockResolvedValueOnce({ rows: [] } as any) // No market SLA
-      .mockResolvedValueOnce({ rows: [] } as any) // No org SLA
       .mockResolvedValueOnce({
         rows: [{
           id: 'sla-base-uuid',
@@ -116,6 +220,10 @@ describe('SLA Hierarchy & Clock Inheritance (SLA-06 Regression Tests)', () => {
           verification_mins: 60,
         }],
       } as any) // Base template query
+      .mockResolvedValueOnce({ rows: [{ market: 'Orlando', city: 'Orlando' }] } as any) // Property market query
+      .mockResolvedValueOnce({ rows: [] } as any) // No market SLA
+      .mockResolvedValueOnce({ rows: [] } as any) // No org SLA
+      .mockResolvedValueOnce({ rows: [] } as any) // No property override
       .mockResolvedValueOnce({ rows: [] } as any); // Insert SLA snapshot
 
     await tasksService.create(mockUser, {
@@ -129,7 +237,7 @@ describe('SLA Hierarchy & Clock Inheritance (SLA-06 Regression Tests)', () => {
     });
 
     // Check base template query SQL
-    const baseQueryCall = vi.mocked(db.query).mock.calls[6];
+    const baseQueryCall = vi.mocked(db.query).mock.calls[2];
     expect(baseQueryCall[0]).toMatch(/organization_id IS NULL AND market IS NULL/i);
     expect(baseQueryCall[0]).not.toMatch(/organization_id IS NULL OR market IS NULL/i);
 
@@ -138,3 +246,4 @@ describe('SLA Hierarchy & Clock Inheritance (SLA-06 Regression Tests)', () => {
     expect(snapshotCall[1][7]).toBe('lookara_base');
   });
 });
+

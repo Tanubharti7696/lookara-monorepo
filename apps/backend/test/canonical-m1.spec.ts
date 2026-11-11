@@ -49,9 +49,12 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
     });
 
     it('should enforce canonical state rules without allowing bypass', async () => {
-      vi.mocked(db.query).mockResolvedValueOnce({
-        rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'unassigned' }],
-      } as any);
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'unassigned' }],
+        } as any)
+        .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any)
+        .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any);
 
       // Attempt illegal transition directly from unassigned -> completed
       await expect(tasksService.updateStatus('task-1', mockUser as any, 'completed')).rejects.toThrow(BadRequestException);
@@ -62,6 +65,8 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
         .mockResolvedValueOnce({
           rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'verification_pending', rework_count: 0 }],
         } as any)
+        .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any) // findOne authorize
+        .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any) // verify authorize
         .mockResolvedValueOnce({
           rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'in_progress', rework_count: 1, rework_reason: 'Paint defect' }],
         } as any);
@@ -246,14 +251,14 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
 
   describe('4. SLA Clocks & 5-Tier Hierarchy Snapshotting', () => {
     it('should snapshot 4 operational targets according to hierarchical resolution (Market Tier)', async () => {
-      // Mock create task queries
+      // Mock create task queries (5-tier order: Base -> Market -> Org -> Property -> Task Override)
       vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any) // Property check
+        .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any) // 0: Property check
         .mockResolvedValueOnce({
           rows: [{ id: 'task-1', job_code: 'JOB-200', organization_id: 'org-1', property_id: 'prop-1', severity: 'critical', title: 'Pipe Burst' }],
-        } as any) // Insert Job
-        .mockResolvedValueOnce({ rows: [] } as any) // No property override
-        .mockResolvedValueOnce({ rows: [{ market: 'NYC', city: 'New York' }] } as any) // Property market query
+        } as any) // 1: Insert Job
+        .mockResolvedValueOnce({ rows: [] } as any) // 2: Base SLA query
+        .mockResolvedValueOnce({ rows: [{ market: 'NYC', city: 'New York' }] } as any) // 3: Property market query
         .mockResolvedValueOnce({
           rows: [{
             id: 'sla-nyc',
@@ -264,8 +269,10 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
             escalation_mins: 30,
             verification_mins: 60,
           }],
-        } as any) // Market SLA matched!
-        .mockResolvedValueOnce({ rows: [] } as any); // Insert snapshot
+        } as any) // 4: Market SLA matched!
+        .mockResolvedValueOnce({ rows: [] } as any) // 5: Org SLA query
+        .mockResolvedValueOnce({ rows: [] } as any) // 6: Property override query
+        .mockResolvedValueOnce({ rows: [] } as any); // 7: Insert snapshot
 
       const task = await tasksService.create(mockUser as any, {
         propertyId: 'prop-1',
@@ -281,7 +288,7 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
       expect(task.job_code).toBe('JOB-200');
 
       // Verify snapshot query included escalation_target and resolved_tier
-      const snapshotCall = vi.mocked(db.query).mock.calls[5];
+      const snapshotCall = vi.mocked(db.query).mock.calls[7];
       expect(snapshotCall[0]).toContain('escalation_target');
       expect(snapshotCall[0]).toContain('resolved_tier');
       expect(snapshotCall[1][7]).toBe('market');
@@ -289,11 +296,15 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
 
     it('should respect Task-level SLA override with highest priority', async () => {
       vi.mocked(db.query)
-        .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any)
+        .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any) // 0: Property check
         .mockResolvedValueOnce({
           rows: [{ id: 'task-2', job_code: 'JOB-201', organization_id: 'org-1', property_id: 'prop-1', severity: 'critical', title: 'Overridden SLA Task' }],
-        } as any)
-        .mockResolvedValueOnce({ rows: [] } as any); // Snapshot insert
+        } as any) // 1: Insert job
+        .mockResolvedValueOnce({ rows: [] } as any) // 2: Base SLA
+        .mockResolvedValueOnce({ rows: [] } as any) // 3: Property market
+        .mockResolvedValueOnce({ rows: [] } as any) // 4: Org SLA
+        .mockResolvedValueOnce({ rows: [] } as any) // 5: Property override
+        .mockResolvedValueOnce({ rows: [] } as any); // 6: Snapshot insert
 
       const task = await tasksService.create(mockUser as any, {
         propertyId: 'prop-1',
@@ -312,8 +323,79 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
       });
 
       expect(task.id).toBe('task-2');
-      const snapshotCall = vi.mocked(db.query).mock.calls[2];
+      const snapshotCall = vi.mocked(db.query).mock.calls[6];
       expect(snapshotCall[1][7]).toBe('task_override');
+    });
+
+    it('should retry job insertion on unique job_code collision (23505) and succeed (V9-10)', async () => {
+      const collisionError = Object.assign(new Error('duplicate key value violates unique constraint "jobs_job_code_key"'), {
+        code: '23505',
+      });
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any) // Property check
+        .mockRejectedValueOnce(collisionError) // 1st Insert attempt collides!
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-retry-ok', job_code: 'JOB-RETRY-2', organization_id: 'org-1', property_id: 'prop-1', severity: 'low', title: 'Collision Retry Task' }],
+        } as any) // 2nd Insert attempt succeeds!
+        .mockResolvedValueOnce({ rows: [] } as any) // Base SLA
+        .mockResolvedValueOnce({ rows: [] } as any) // Property market
+        .mockResolvedValueOnce({ rows: [] } as any) // Org SLA
+        .mockResolvedValueOnce({ rows: [] } as any) // Property override
+        .mockResolvedValueOnce({ rows: [] } as any); // Snapshot insert
+
+      const task = await tasksService.create(mockUser as any, {
+        propertyId: 'prop-1',
+        tradeCode: 'GEN',
+        workflowClass: 'maintenance',
+        severity: 'low',
+        source: 'pm_portal',
+        title: 'Collision Retry Task',
+        serviceType: 'maintenance',
+      });
+
+      expect(task.id).toBe('task-retry-ok');
+      expect(task.job_code).toBe('JOB-RETRY-2');
+    });
+  });
+
+  describe('5. Concurrency & Work Hours Enforcement (V9-05, V9-06)', () => {
+    it('should reject updateStatus with ConflictException when concurrent status modification occurs (V9-05)', async () => {
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ id: 'task-1', organization_id: 'org-1', job_code: 'JOB-100', status: 'accepted' }],
+        } as any) // findOne
+        .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any) // findOne authorize
+        .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any) // updateStatus authorize
+        .mockResolvedValueOnce({ rows: [] } as any); // UPDATE jobs WHERE id = $2 AND status = $3 returns 0 rows!
+
+      await expect(tasksService.updateStatus('task-1', mockUser as any, 'in_progress')).rejects.toThrow(ConflictException);
+    });
+
+    it('should evaluate vendor work hours (start_time / end_time) in property timezone during candidate lookup (V9-06)', async () => {
+      vi.mocked(db.query).mockReset();
+      vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{
+            id: 'task-tz-1',
+            organization_id: 'org-1',
+            property_id: 'prop-1',
+            trade_code: 'HVAC',
+            severity: 'high',
+            job_code: 'JOB-TZ-1',
+            status: 'unassigned',
+            scheduled_start: '2026-11-11T14:00:00Z',
+            property_timezone: 'America/Chicago',
+          }],
+        } as any)
+        .mockResolvedValueOnce({ rows: [] } as any);
+
+      await dispatchService.getCandidates('task-tz-1', mockUser as any);
+
+      const candidateQueryCall = vi.mocked(db.query).mock.calls[1];
+      expect(candidateQueryCall[0]).toContain('AT TIME ZONE $6');
+      expect(candidateQueryCall[0]).toContain('va.start_time');
+      expect(candidateQueryCall[0]).toContain('va.end_time');
+      expect(candidateQueryCall[1][5]).toBe('America/Chicago');
     });
   });
 });

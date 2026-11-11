@@ -13,7 +13,7 @@ export class DispatchService {
    * actual verified compliance documents (no blocking unapproved/expired docs), and emergency status.
    */
   async getCandidates(jobId: string, user: JwtPayload, specificVendorId?: string) {
-    const jobRes = await query(`SELECT * FROM jobs WHERE id = $1`, [jobId]);
+    const jobRes = await query(`SELECT j.*, p.timezone AS property_timezone FROM jobs j LEFT JOIN properties p ON j.property_id = p.id WHERE j.id = $1`, [jobId]);
     if (jobRes.rows.length === 0) throw new NotFoundException('Task not found');
     const job = jobRes.rows[0];
 
@@ -22,8 +22,9 @@ export class DispatchService {
       throw new ForbiddenException('You do not have access to this task');
     }
 
-    // Schedulable timestamp & timezone evaluation (VEND-10)
+    // Schedulable timestamp & property timezone evaluation (V9-06 / VEND-10)
     const targetTimestamp = job.scheduled_start || new Date();
+    const propTimezone = job.property_timezone || 'America/New_York';
 
     // Canonical Eligibility & Compliance Query:
     // 1. Trade/Skill: vendor_trades matches job.trade_code and is active
@@ -31,7 +32,7 @@ export class DispatchService {
     // 3. Document Compliance: vendor has NO blocking compliance requirements that are unapproved or expired
     // 4. Relationship: organization_vendors status IN ('preferred', 'neutral', 'limited')
     // 5. Emergency: if job.severity == 'critical', vendor.emergency_enabled = true
-    // 6. Availability: vendor is not marked is_off for target scheduled day of week
+    // 6. Availability & Work Hours in Property Timezone: vendor is not marked is_off for target weekday AND target time falls within start_time..end_time
     let sql = `
       SELECT v.id, v.display_name, v.business_name, v.primary_trade, v.lifecycle_status,
              v.emergency_enabled, ov.relationship_status,
@@ -45,11 +46,20 @@ export class DispatchService {
         AND ($4::boolean = false OR v.emergency_enabled = true)
         AND v.accepts_new_jobs = true
         AND NOT EXISTS (
-          -- Check vendor availability schedule for target scheduled day of week (0=Sunday..6=Saturday)
+          -- Check vendor availability schedule for target scheduled day of week and time window in property timezone (0=Sunday..6=Saturday)
           SELECT 1 FROM vendor_availability va
           WHERE va.vendor_id = v.id
-            AND va.weekday = EXTRACT(DOW FROM COALESCE($5::timestamptz, CURRENT_TIMESTAMP))::smallint
-            AND va.is_off = true
+            AND va.weekday = EXTRACT(DOW FROM (COALESCE($5::timestamptz, CURRENT_TIMESTAMP) AT TIME ZONE $6))::smallint
+            AND (
+              va.is_off = true
+              OR (
+                va.start_time IS NOT NULL AND va.end_time IS NOT NULL
+                AND (
+                  ((COALESCE($5::timestamptz, CURRENT_TIMESTAMP) AT TIME ZONE $6)::time < va.start_time)
+                  OR ((COALESCE($5::timestamptz, CURRENT_TIMESTAMP) AT TIME ZONE $6)::time > va.end_time)
+                )
+              )
+            )
         )
         AND NOT EXISTS (
           -- Check for any blocking compliance requirement that lacks an approved, unexpired document
@@ -65,10 +75,10 @@ export class DispatchService {
             )
         )
     `;
-    const params: any[] = [job.organization_id, job.property_id, job.trade_code, job.severity === 'critical', targetTimestamp];
+    const params: any[] = [job.organization_id, job.property_id, job.trade_code, job.severity === 'critical', targetTimestamp, propTimezone];
 
     if (specificVendorId) {
-      sql += ` AND v.id = $6`;
+      sql += ` AND v.id = $7`;
       params.push(specificVendorId);
     }
 

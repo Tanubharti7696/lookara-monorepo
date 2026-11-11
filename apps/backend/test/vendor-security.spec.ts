@@ -85,9 +85,10 @@ describe('VendorsService - Security & Concurrency (VEND-04 with REAL TaskPolicyS
     vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'ven-1' }] } as any);
     mockClient.query
       .mockResolvedValueOnce({}) // BEGIN
-      .mockResolvedValueOnce({ rows: [{ id: 'job-1', status: 'assigned', job_code: 'JOB-101' }] }) // SELECT jobs FOR UPDATE
-      .mockResolvedValueOnce({ rows: [{ id: 'assign-1', vendor_id: 'ven-1' }] }) // SELECT assignments FOR UPDATE
+      .mockResolvedValueOnce({ rows: [{ id: 'job-1', status: 'assigned', job_code: 'JOB-101', organization_id: 'org-1' }] }) // SELECT jobs FOR UPDATE
+      .mockResolvedValueOnce({ rows: [{ id: 'assign-1', vendor_id: 'ven-1', assigned_at: new Date() }] }) // SELECT assignments FOR UPDATE
       .mockResolvedValueOnce({}) // UPDATE job_assignments
+      .mockResolvedValueOnce({}) // INSERT job_offers
       .mockResolvedValueOnce({ rows: [{ id: 'job-1', status: 'accepted' }] }) // UPDATE jobs RETURNING *
       .mockResolvedValueOnce({}); // COMMIT
 
@@ -103,12 +104,13 @@ describe('VendorsService - Security & Concurrency (VEND-04 with REAL TaskPolicyS
     expect(mockClient.release).toHaveBeenCalled();
   });
 
-  it('atomically declines job with REAL TaskPolicyService allowing vendor_decline to unassigned', async () => {
+  it('atomically declines job with REAL TaskPolicyService allowing vendor_decline to unassigned and preserving offer history in job_offers', async () => {
     vi.mocked(db.query).mockResolvedValueOnce({ rows: [{ id: 'ven-1' }] } as any);
     mockClient.query
       .mockResolvedValueOnce({}) // BEGIN
-      .mockResolvedValueOnce({ rows: [{ id: 'job-1', status: 'assigned', job_code: 'JOB-101' }] }) // SELECT jobs FOR UPDATE
-      .mockResolvedValueOnce({ rows: [{ id: 'assign-1', vendor_id: 'ven-1' }] }) // SELECT assignments FOR UPDATE
+      .mockResolvedValueOnce({ rows: [{ id: 'job-1', status: 'assigned', job_code: 'JOB-101', organization_id: 'org-1' }] }) // SELECT jobs FOR UPDATE
+      .mockResolvedValueOnce({ rows: [{ id: 'assign-1', vendor_id: 'ven-1', assigned_at: new Date() }] }) // SELECT assignments FOR UPDATE
+      .mockResolvedValueOnce({}) // INSERT job_offers (declined)
       .mockResolvedValueOnce({}) // DELETE job_assignments
       .mockResolvedValueOnce({ rows: [{ id: 'job-1', status: 'unassigned' }] }) // UPDATE jobs RETURNING *
       .mockResolvedValueOnce({}); // COMMIT
@@ -116,6 +118,10 @@ describe('VendorsService - Security & Concurrency (VEND-04 with REAL TaskPolicyS
     const result = await service.respondToJob('job-1', mockUser, { action: 'decline', declineReason: 'Too busy' });
 
     expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
+    expect(mockClient.query).toHaveBeenCalledWith(
+      expect.stringMatching(/INSERT INTO job_offers/i),
+      expect.arrayContaining(['job-1', 'ven-1'])
+    );
     expect(mockAuditService.recordEvent).toHaveBeenCalledWith(expect.objectContaining({
       actorType: 'vendor',
       eventType: 'job.declined',
