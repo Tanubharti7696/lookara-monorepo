@@ -14,10 +14,12 @@
     "dev:owner": "npm run dev --workspace=@lookara/owner-portal",
     "db:start": "npm run db:start --workspace=@lookara/database",
     "db:migrate": "npm run db:migrate --workspace=@lookara/database",
+    "db:verify": "npm run db:verify --workspace=@lookara/database",
     "db:seed": "npm run db:seed --workspace=@lookara/database",
     "db:init": "npm run db:init --workspace=@lookara/database",
     "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e --workspace=backend"
   },
   "devDependencies": {
     "typescript": "^5.0.0"

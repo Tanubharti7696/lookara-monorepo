@@ -2,6 +2,7 @@
 const { Client } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const { verifySchemaWithClient } = require('./verify-schema');
 
 const connectionString =
   process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/lookara';
@@ -77,6 +78,12 @@ async function migrate() {
         }
       }
     }
+
+    // 4. Ensure idempotent ALTER TABLE column additions from schema.sql are present, then verify all 38 canonical tables, columns, and constraints (V9-08)
+    await client.query(`
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS rework_parent_job_id UUID REFERENCES jobs(id) ON DELETE SET NULL;
+    `);
+    await verifySchemaWithClient(client);
 
     console.log('[Migrate] All canonical database migrations applied and verified successfully!');
   } catch (err) {

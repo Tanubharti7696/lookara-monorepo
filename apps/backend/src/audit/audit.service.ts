@@ -20,7 +20,19 @@ export interface RecordAuditInput {
 export class AuditService {
   async recordEvent(input: RecordAuditInput) {
     const eventCode = `AUD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    const orgId = input.organizationId || input.metadata?.organizationId || input.metadata?.orgId || null;
+    let orgId = input.organizationId || input.metadata?.organizationId || input.metadata?.orgId || null;
+
+    // Automatic fallback: if orgId is null but target is a job, look up organization_id from jobs
+    if (!orgId && input.targetType === 'job' && input.targetId) {
+      try {
+        const jobLookup = await query(`SELECT organization_id FROM jobs WHERE id = $1 LIMIT 1`, [input.targetId]);
+        if (jobLookup.rows.length > 0) {
+          orgId = jobLookup.rows[0].organization_id;
+        }
+      } catch (lookupErr) {
+        // Continue with null if lookup fails
+      }
+    }
 
     let res: any;
     try {

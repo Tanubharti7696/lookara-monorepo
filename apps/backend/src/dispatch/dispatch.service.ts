@@ -127,8 +127,8 @@ export class DispatchService {
 
       const lockedJob = lockedJobRes.rows[0];
 
-      // Canonical state check: only unassigned or dispatching jobs can be assigned
-      if (lockedJob.status !== 'unassigned' && lockedJob.status !== 'dispatching') {
+      // Canonical state check: only created, unassigned, or dispatching jobs can be assigned
+      if (!['created', 'unassigned', 'dispatching'].includes(lockedJob.status)) {
         throw new ConflictException(
           `Cannot assign task ${lockedJob.job_code}: current status is already "${lockedJob.status}"`
         );
@@ -162,6 +162,7 @@ export class DispatchService {
       await this.auditService.recordEvent({
         actorType: 'pm',
         actorUserId: user.sub,
+        organizationId: lockedJob.organization_id,
         targetType: 'job',
         targetId: jobId,
         category: 'dispatch',

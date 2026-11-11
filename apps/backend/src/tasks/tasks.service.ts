@@ -535,6 +535,7 @@ export class TasksService {
     await this.auditService.recordEvent({
       actorType: authContext.role,
       actorUserId: user.sub,
+      organizationId: task.organization_id,
       targetType: 'job',
       targetId: id,
       category: 'task',
@@ -651,6 +652,7 @@ export class TasksService {
     await this.auditService.recordEvent({
       actorType: authContext.role,
       actorUserId: user.sub,
+      organizationId: task.organization_id,
       targetType: 'job',
       targetId: jobId,
       category: 'task',
@@ -689,6 +691,7 @@ export class TasksService {
       await this.auditService.recordEvent({
         actorType: 'pm',
         actorUserId: user.sub,
+        organizationId: task.organization_id,
         targetType: 'job',
         targetId: jobId,
         category: 'task',

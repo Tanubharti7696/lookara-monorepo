@@ -31,7 +31,7 @@ export const pool = new Pool({
   ssl: sslConfig,
   max: 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  connectionTimeoutMillis: 30000,
 });
 
 export async function query<R extends QueryResultRow = any>(
