@@ -335,7 +335,9 @@ export class DashboardService {
       LIMIT 10
     `, [params.date]);
 
+    let isFallbackOperations = false;
     if (operationsRes.rows.length === 0) {
+      isFallbackOperations = true;
       operationsRes = await query(`
         SELECT j.id, j.title, j.severity, j.workflow_class, j.scheduled_start, j.estimated_duration_minutes,
                p.id as property_id, p.name as property_name, p.city, p.state as region
@@ -350,10 +352,10 @@ export class DashboardService {
     }
 
     const todayOperations = operationsRes.rows.map((row: any) => {
-      const startsAt = row.scheduled_start ? new Date(row.scheduled_start).toISOString() : new Date().toISOString();
+      const startsAt = row.scheduled_start ? new Date(row.scheduled_start).toISOString() : null;
       const endsAt = row.scheduled_start
         ? new Date(new Date(row.scheduled_start).getTime() + (row.estimated_duration_minutes || 60) * 60000).toISOString()
-        : new Date(new Date().getTime() + 3600000).toISOString();
+        : null;
 
       return {
         id: row.id,
@@ -370,6 +372,7 @@ export class DashboardService {
         endsAt,
         severity: row.severity,
         taskCount: 1,
+        isFallback: isFallbackOperations,
         action: {
           type: 'open_task',
           entityType: 'task',

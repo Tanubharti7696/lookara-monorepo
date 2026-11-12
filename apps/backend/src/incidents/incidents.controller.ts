@@ -32,4 +32,32 @@ export class IncidentsController {
   ) {
     return this.incidentsService.updateStatus(id, user, status);
   }
+
+  @Get(':id/evidence')
+  async getEvidence(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.incidentsService.getIncidentEvidence(id, user);
+  }
+
+  @Get(':id/timeline')
+  async getTimeline(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.incidentsService.getIncidentTimeline(id, user);
+  }
+
+  @Post(':id/escalations')
+  async escalate(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: any
+  ) {
+    return this.incidentsService.escalateIncident(id, user, body);
+  }
+
+  @Post(':id/tasks')
+  async createTask(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body: any
+  ) {
+    return this.incidentsService.createTaskForIncident(id, user, body);
+  }
 }

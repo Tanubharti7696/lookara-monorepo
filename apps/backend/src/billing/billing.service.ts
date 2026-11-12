@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { query } from '@lookara/database';
 import type { JwtPayload } from '@lookara/auth';
 
@@ -99,7 +99,7 @@ export class BillingService {
 
   async getApprovalById(user: JwtPayload, id: string) {
     const orgId = user.activeOrganizationId;
-    if (!orgId) return null;
+    if (!orgId) throw new ForbiddenException('Must be in an organization context');
 
     const res = await query(
       `SELECT a.*, p.name AS property_name, p.address_line_1, p.city, p.state
@@ -108,7 +108,10 @@ export class BillingService {
        WHERE a.id = $1 AND a.organization_id = $2`,
       [id, orgId]
     );
-    return res.rows[0] || null;
+    if (!res.rows || res.rows.length === 0) {
+      throw new NotFoundException(`Approval with ID ${id} not found`);
+    }
+    return res.rows[0];
   }
 
   async addPaymentMethod(user: JwtPayload, methodData: any) {
