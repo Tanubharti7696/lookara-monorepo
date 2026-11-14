@@ -42,7 +42,7 @@ describe('Lookara Milestone 1 — Connected PostgreSQL End-to-End Acceptance Sui
     tasksService = new TasksService(auditService, taskPolicyService);
     dispatchService = new DispatchService(auditService);
     vendorsService = new VendorsService(auditService, tasksService, taskPolicyService);
-    authService = new AuthService(auditService);
+    authService = new AuthService();
 
     // Seed isolated test organizations, property, SLA tiers, users, and vendors in real PostgreSQL
     const org1Res = await query(
@@ -219,6 +219,7 @@ describe('Lookara Milestone 1 — Connected PostgreSQL End-to-End Acceptance Sui
         workflowClass: 'maintenance',
         severity: 'high',
         serviceType: 'repair',
+        source: 'pm',
         scheduledStart: '2026-11-11T15:00:00Z', // 10:00 AM America/New_York
         slaOverride: {
           escalationMins: 20, // Override only escalation clock; keep Org response (30), Market arrival (90), Property completion (300)
@@ -268,6 +269,7 @@ describe('Lookara Milestone 1 — Connected PostgreSQL End-to-End Acceptance Sui
         workflowClass: 'maintenance',
         severity: 'medium',
         serviceType: 'repair',
+        source: 'pm',
       })
     ).rejects.toThrow(/membership|Forbidden/i);
 
@@ -380,7 +382,6 @@ describe('Lookara Milestone 1 — Connected PostgreSQL End-to-End Acceptance Sui
     // Step E: PM verifies completed work -> status transitions to 'closed' (or 'completed')
     const verified = await tasksService.verify(createdJobId, pmJwt, {
       decision: 'approve',
-      notes: 'Verified via completion photo',
     });
     expect(['completed', 'closed']).toContain(verified.status);
 

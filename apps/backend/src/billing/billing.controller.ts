@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Query, Param, UseGuards, BadRequestException } from '@nestjs/common';
 import { BillingService } from './billing.service';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -37,5 +37,28 @@ export class BillingController {
   @Post('billing/payment-methods')
   async addPaymentMethod(@CurrentUser() user: JwtPayload, @Body() body: any) {
     return this.billingService.addPaymentMethod(user, body);
+  }
+
+  @Post('storage/upload')
+  async uploadStorage(
+    @CurrentUser() user: JwtPayload,
+    @Body() body: { filename?: string; mimeType?: string; base64Content: string }
+  ) {
+    if (!body || !body.base64Content) {
+      throw new BadRequestException('base64Content is required');
+    }
+    const ext = body.filename?.split('.').pop() || 'jpg';
+    const key = `uploads/${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
+    const fileUrl = body.base64Content.startsWith('data:')
+      ? body.base64Content
+      : `data:${body.mimeType || 'image/jpeg'};base64,${body.base64Content}`;
+
+    return {
+      success: true,
+      key,
+      fileUrl,
+      filename: body.filename || `upload-${Date.now()}.${ext}`,
+      mimeType: body.mimeType || 'image/jpeg',
+    };
   }
 }

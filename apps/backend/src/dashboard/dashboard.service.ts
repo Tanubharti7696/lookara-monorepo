@@ -9,6 +9,7 @@ export interface HomeQueryParams {
   portfolioId?: string;
   propertyId?: string;
   criticalFilter?: 'emergency' | 'sla_risk' | 'vendor_coverage' | 'all';
+  allowFallback?: boolean | string;
 }
 
 export interface CriticalActionsQueryParams {
@@ -336,7 +337,8 @@ export class DashboardService {
     `, [params.date]);
 
     let isFallbackOperations = false;
-    if (operationsRes.rows.length === 0) {
+    const shouldFallback = params.allowFallback === true || params.allowFallback === 'true';
+    if (operationsRes.rows.length === 0 && shouldFallback) {
       isFallbackOperations = true;
       operationsRes = await query(`
         SELECT j.id, j.title, j.severity, j.workflow_class, j.scheduled_start, j.estimated_duration_minutes,

@@ -60,4 +60,13 @@ export class IncidentsController {
   ) {
     return this.incidentsService.createTaskForIncident(id, user, body);
   }
+
+  @Post(':id/dispatch')
+  async dispatch(
+    @Param('id') id: string,
+    @CurrentUser() user: JwtPayload,
+    @Body() body?: { vendorId?: string; tradeCode?: string }
+  ) {
+    return this.incidentsService.dispatchIncident(id, user, body);
+  }
 }

@@ -608,7 +608,8 @@ export class TasksService {
 
   async addEvidence(jobId: string, user: JwtPayload, data: {
     evidenceType: 'before_photo' | 'after_photo' | 'receipt' | 'notes' | 'signature';
-    fileUrl: string;
+    fileUrl?: string;
+    base64Content?: string;
     notes?: string;
     gpsLatitude?: number;
     gpsLongitude?: number;
@@ -624,6 +625,10 @@ export class TasksService {
       if (vRes.rows.length > 0) vendorId = vRes.rows[0].id;
     }
 
+    const resolvedFileUrl = data.fileUrl || (data.base64Content
+      ? (data.base64Content.startsWith('data:') ? data.base64Content : `data:image/jpeg;base64,${data.base64Content}`)
+      : `https://storage.lookara.internal/evidence/${jobId}/${Date.now()}.jpg`);
+
     let res: any;
     try {
       res = await query(
@@ -636,7 +641,7 @@ export class TasksService {
           vendorId,
           user.sub,
           data.evidenceType,
-          data.fileUrl,
+          resolvedFileUrl,
           data.notes || null,
           data.gpsLatitude || null,
           data.gpsLongitude || null,
@@ -654,7 +659,7 @@ export class TasksService {
             jobId,
             user.sub,
             data.evidenceType,
-            data.fileUrl,
+            resolvedFileUrl,
             data.notes || null,
           ]
         );

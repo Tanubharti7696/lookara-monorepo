@@ -1,11 +1,15 @@
-import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, ForbiddenException, NotFoundException, Optional } from '@nestjs/common';
 import { query } from '@lookara/database';
 import type { JwtPayload } from '@lookara/auth';
 import { AuditService } from '../audit/audit.service';
+import { DispatchService } from '../dispatch/dispatch.service';
 
 @Injectable()
 export class IncidentsService {
-  constructor(private readonly auditService: AuditService) {}
+  constructor(
+    private readonly auditService: AuditService,
+    @Optional() private readonly dispatchService?: DispatchService,
+  ) {}
 
   async findOne(id: string, user: JwtPayload) {
     const orgId = user.activeOrganizationId;
@@ -133,29 +137,107 @@ export class IncidentsService {
     return updated.rows[0];
   }
 
-  async create(user: JwtPayload, data: { propertyId: string; description: string; severity: string; flagType: string }) {
+  async create(user: JwtPayload, data: {
+    propertyId: string;
+    title?: string;
+    flagType?: string;
+    description: string;
+    severity?: string;
+    category?: string;
+    unit?: string;
+    tradeCode?: string;
+    createLinkedTask?: boolean;
+    attachments?: Array<{ fileUrl?: string; base64Content?: string; evidenceType?: string; notes?: string }>;
+  }) {
     const orgId = user.activeOrganizationId;
     if (!orgId) throw new ForbiddenException('Must be in an organization context');
 
-    const incidentCode = 'INC-' + Math.floor(Math.random() * 100000);
+    const incidentTitle = data.title || data.flagType || 'Emergency Incident';
+    const incidentSeverity = (data.severity || 'critical').toLowerCase();
+    const incidentType = data.category || 'emergency';
+    const incidentCode = 'INC-' + Math.floor(10000 + Math.random() * 90000);
+
     const res = await query(`
       INSERT INTO incidents (
         organization_id, property_id, title, incident_type, severity, status, summary, incident_code
-      ) VALUES ($1, $2, $3, 'maintenance_issue', $4, 'open', $5, $6)
+      ) VALUES ($1, $2, $3, $4, $5, 'open', $6, $7)
       RETURNING *
-    `, [orgId, data.propertyId, data.flagType, data.severity, data.description, incidentCode]);
+    `, [orgId, data.propertyId, incidentTitle, incidentType, incidentSeverity, data.description, incidentCode]);
+
+    const incident = res.rows[0];
+    let linkedJob: any = null;
+
+    // Automatically create linked remediation task unless explicitly disabled
+    if (data.createLinkedTask !== false) {
+      const jobCode = 'JOB-INC-' + Math.floor(1000 + Math.random() * 9000);
+      const jobRes = await query(`
+        INSERT INTO jobs (
+          job_code, organization_id, property_id, created_by_user_id,
+          trade_code, workflow_class, subtype, severity, source, title, description,
+          service_type, status, scheduled_start
+        ) VALUES ($1, $2, $3, $4, $5, 'maintenance', 'incident_remediation', $6, 'incident', $7, $8, 'emergency', 'unassigned', now())
+        RETURNING *;
+      `, [
+        jobCode,
+        orgId,
+        data.propertyId,
+        user.sub,
+        data.tradeCode || 'general',
+        incidentSeverity,
+        `Remediation: ${incidentTitle}`,
+        data.description,
+      ]);
+      linkedJob = jobRes.rows[0];
+
+      // Link job back to incident
+      await query(`UPDATE incidents SET related_job_id = $1 WHERE id = $2`, [linkedJob.id, incident.id]);
+      incident.related_job_id = linkedJob.id;
+
+      // Create SLA snapshot for linked job with authoritative deadlines
+      const ackTarget = new Date(Date.now() + 15 * 60000);
+      const arrTarget = new Date(Date.now() + (incidentSeverity === 'critical' ? 60 : 120) * 60000);
+      const compTarget = new Date(Date.now() + (incidentSeverity === 'critical' ? 180 : 480) * 60000);
+      await query(`
+        INSERT INTO job_sla_snapshots (job_id, acknowledge_target, arrival_target, completion_target, resolved_tier)
+        VALUES ($1, $2, $3, $4, 'lookara_base')
+        ON CONFLICT (job_id) DO UPDATE SET
+          acknowledge_target = EXCLUDED.acknowledge_target,
+          arrival_target = EXCLUDED.arrival_target,
+          completion_target = EXCLUDED.completion_target
+      `, [linkedJob.id, ackTarget, arrTarget, compTarget]);
+
+      // Record any initial attachments in job_evidence
+      if (data.attachments && Array.isArray(data.attachments)) {
+        for (const att of data.attachments) {
+          const resolvedAttUrl = att.fileUrl || (att.base64Content
+            ? (att.base64Content.startsWith('data:') ? att.base64Content : `data:image/jpeg;base64,${att.base64Content}`)
+            : null);
+          if (resolvedAttUrl) {
+            await query(`
+              INSERT INTO job_evidence (job_id, uploaded_by_user_id, evidence_type, file_url, notes)
+              VALUES ($1, $2, $3, $4, $5)
+            `, [linkedJob.id, user.sub, att.evidenceType || 'before_photo', resolvedAttUrl, att.notes || 'Incident attachment']);
+          }
+        }
+      }
+    }
 
     await this.auditService.recordEvent({
       actorType: 'pm',
       actorUserId: user.sub,
+      organizationId: orgId,
       targetType: 'incident',
-      targetId: res.rows[0].id,
+      targetId: incident.id,
       category: 'incident',
       eventType: 'incident.created',
-      summary: `Incident reported: ${data.flagType}`
+      summary: `Incident reported: ${incidentTitle} (${incidentCode})`,
+      metadata: { incidentCode, linkedJobId: linkedJob?.id },
     });
 
-    return res.rows[0];
+    return {
+      ...incident,
+      linkedJob,
+    };
   }
 
   async getEmergencyOverview(
@@ -206,7 +288,7 @@ export class IncidentsService {
       SELECT i.*, p.name as property_name, p.address_line_1, p.city, p.state, p.timezone as property_timezone,
              j.id as job_id, j.job_code, j.title as job_title, j.status as job_status,
              ja.vendor_id, v.display_name as vendor_name, vu.phone as vendor_phone, ov.relationship_status as vendor_status,
-             jss.arrival_target, jss.completion_target, jss.resolved_tier as sla_risk_tier
+             jss.acknowledge_target, jss.arrival_target, jss.completion_target, jss.resolved_tier as sla_risk_tier
       FROM incidents i
       JOIN properties p ON i.property_id = p.id
       LEFT JOIN jobs j ON i.related_job_id = j.id
@@ -246,9 +328,61 @@ export class IncidentsService {
     const requiresAttentionCount = parseInt(sRow.attention_count || '0', 10);
     const criticalApproachingBreachCount = parseInt(sRow.critical_count || '0', 10);
 
+    const nowMs = Date.now();
     const items = listRes.rows.map((row: any) => {
       const isVendorAssigned = Boolean(row.vendor_id);
-      const riskTier = row.sla_risk_tier || (row.severity === 'critical' ? 'at_risk' : 'on_track');
+      const createdAt = new Date(row.created_at);
+      const isCritical = row.severity === 'critical';
+      const isHigh = row.severity === 'high';
+
+      // Lookara SLA Baseline Rules (mins from creation):
+      // Critical: 15m Ack, 60m Arrival, 180m Completion
+      // High:     30m Ack, 120m Arrival, 360m Completion
+      // Normal:   60m Ack, 240m Arrival, 1440m Completion
+      const ackMins = isCritical ? 15 : isHigh ? 30 : 60;
+      const arrMins = isCritical ? 60 : isHigh ? 120 : 240;
+      const compMins = isCritical ? 180 : isHigh ? 360 : 1440;
+
+      const acknowledgeDueAt = row.acknowledge_target
+        ? new Date(row.acknowledge_target).toISOString()
+        : new Date(createdAt.getTime() + ackMins * 60000).toISOString();
+      const arrivalDueAt = row.arrival_target
+        ? new Date(row.arrival_target).toISOString()
+        : new Date(createdAt.getTime() + arrMins * 60000).toISOString();
+      const completionDueAt = row.completion_target
+        ? new Date(row.completion_target).toISOString()
+        : new Date(createdAt.getTime() + compMins * 60000).toISOString();
+
+      // Dynamic risk tier based on authoritative remaining time
+      const targetDueMs = isVendorAssigned
+        ? new Date(completionDueAt).getTime()
+        : new Date(arrivalDueAt).getTime();
+      const remainingMs = targetDueMs - nowMs;
+
+      let riskTier: 'breached' | 'at_risk' | 'on_track';
+      if (remainingMs <= 0) {
+        riskTier = 'breached';
+      } else if (remainingMs <= 30 * 60000) {
+        riskTier = 'at_risk';
+      } else {
+        riskTier = 'on_track';
+      }
+
+      const allowedActions = isVendorAssigned
+        ? ['view_dispatch', 'contact_vendor', 'escalate', 'add_evidence', 'reassign_vendor']
+        : ['assign_vendor', 'create_task', 'escalate', 'add_evidence', 'view_dispatch'];
+
+      const primaryAction = isVendorAssigned
+        ? {
+            type: 'view_dispatch',
+            entityType: 'incident',
+            entityId: row.id,
+          }
+        : {
+            type: 'assign_vendor',
+            entityType: 'incident',
+            entityId: row.id,
+          };
 
       return {
         id: row.id,
@@ -287,9 +421,9 @@ export class IncidentsService {
           etaAt: null,
         },
         sla: {
-          acknowledgeDueAt: null,
-          arrivalDueAt: row.arrival_target || null,
-          completionDueAt: row.completion_target || null,
+          acknowledgeDueAt,
+          arrivalDueAt,
+          completionDueAt,
           riskTier,
         },
         escalation: {
@@ -299,14 +433,14 @@ export class IncidentsService {
         createdAt: row.created_at,
         updatedAt: row.updated_at || row.created_at,
         resolvedAt: row.resolved_at || null,
-        allowedActions: ['view_dispatch', 'escalate', 'add_evidence', 'create_task'],
-        primaryAction: {
-          type: 'view_dispatch',
-          entityType: 'incident',
-          entityId: row.id,
-        },
+        allowedActions,
+        primaryAction,
       };
     });
+
+    const breachedCount = items.filter(i => i.sla.riskTier === 'breached').length;
+    const approachingBreachCount = items.filter(i => i.sla.riskTier === 'at_risk').length;
+    const criticalApproachingCount = items.filter(i => i.severity === 'critical' && i.sla.riskTier === 'at_risk').length;
 
     return {
       mode: {
@@ -318,9 +452,9 @@ export class IncidentsService {
         activeCount,
         thisWeekCount,
         requiresAttentionCount,
-        approachingBreachCount: Math.min(requiresAttentionCount, 2),
-        breachedCount: 0,
-        criticalApproachingBreachCount,
+        approachingBreachCount,
+        breachedCount,
+        criticalApproachingBreachCount: criticalApproachingCount || criticalApproachingBreachCount,
         guestOccupiedUrgentCount: Math.min(activeCount, 1),
       },
       incidents: {
@@ -465,5 +599,51 @@ export class IncidentsService {
     });
 
     return createdJob;
+  }
+
+  async dispatchIncident(id: string, user: JwtPayload, body?: { vendorId?: string; tradeCode?: string }) {
+    const inc = await this.findOne(id, user);
+    let jobId = inc.relatedJobId;
+
+    if (!jobId) {
+      const createdJob = await this.createTaskForIncident(id, user, {
+        tradeCode: body?.tradeCode || 'general',
+        title: `Remediation for ${inc.title}`,
+        description: inc.description,
+      });
+      jobId = createdJob.id;
+    }
+
+    if (!this.dispatchService) {
+      throw new ForbiddenException('Dispatch service unavailable');
+    }
+
+    let dispatchResult: any;
+    if (body?.vendorId) {
+      dispatchResult = await this.dispatchService.assignVendor(jobId, body.vendorId, user);
+    } else {
+      dispatchResult = await this.dispatchService.autoDispatch(jobId, user);
+    }
+
+    await query(`UPDATE incidents SET status = 'in_progress', updated_at = now() WHERE id = $1`, [id]);
+
+    await this.auditService.recordEvent({
+      actorType: 'pm',
+      actorUserId: user.sub,
+      organizationId: user.activeOrganizationId,
+      targetType: 'incident',
+      targetId: id,
+      category: 'incident',
+      eventType: 'incident.dispatched',
+      summary: `Incident ${inc.incidentCode || id} dispatched to vendor`,
+      metadata: { jobId, vendorId: body?.vendorId, result: dispatchResult },
+    });
+
+    return {
+      incidentId: id,
+      jobId,
+      status: 'in_progress',
+      dispatch: dispatchResult,
+    };
   }
 }
