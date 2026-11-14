@@ -22,12 +22,21 @@ export class AuditService {
     const eventCode = `AUD-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     let orgId = input.organizationId || input.metadata?.organizationId || input.metadata?.orgId || null;
 
-    // Automatic fallback: if orgId is null but target is a job, look up organization_id from jobs
-    if (!orgId && input.targetType === 'job' && input.targetId) {
+    // Automatic lookup: if orgId is null, resolve trusted organization_id from target entity
+    if (!orgId && input.targetId) {
       try {
-        const jobLookup = await query(`SELECT organization_id FROM jobs WHERE id = $1 LIMIT 1`, [input.targetId]);
-        if (jobLookup.rows.length > 0) {
-          orgId = jobLookup.rows[0].organization_id;
+        if (input.targetType === 'job') {
+          const res = await query(`SELECT organization_id FROM jobs WHERE id = $1 LIMIT 1`, [input.targetId]);
+          if (res.rows.length > 0) orgId = res.rows[0].organization_id;
+        } else if (input.targetType === 'property') {
+          const res = await query(`SELECT organization_id FROM properties WHERE id = $1 LIMIT 1`, [input.targetId]);
+          if (res.rows.length > 0) orgId = res.rows[0].organization_id;
+        } else if (input.targetType === 'incident') {
+          const res = await query(`SELECT organization_id FROM incidents WHERE id = $1 LIMIT 1`, [input.targetId]);
+          if (res.rows.length > 0) orgId = res.rows[0].organization_id;
+        } else if (input.targetType === 'approval') {
+          const res = await query(`SELECT organization_id FROM approvals WHERE id = $1 LIMIT 1`, [input.targetId]);
+          if (res.rows.length > 0) orgId = res.rows[0].organization_id;
         }
       } catch (lookupErr) {
         // Continue with null if lookup fails
@@ -144,19 +153,9 @@ export class AuditService {
         throw new ForbiddenException('User is not an active member of the requested organization');
       }
 
-      // Strictly scope to resources belonging exclusively to the user's active organization (V9-07: first-class organization_id + entity scoping)
-      conditions.push(`(
-        organization_id = $${paramIdx}::uuid
-        OR target_id IN (SELECT id FROM jobs WHERE organization_id = $${paramIdx}::uuid)
-        OR target_id IN (SELECT id FROM properties WHERE organization_id = $${paramIdx}::uuid)
-        OR target_id IN (SELECT id FROM incidents WHERE organization_id = $${paramIdx}::uuid)
-        OR target_id IN (SELECT id FROM approvals WHERE organization_id = $${paramIdx}::uuid)
-        OR target_id = $${paramIdx}::uuid
-        OR (metadata->>'organizationId') = $${paramIdx}::text
-        OR (metadata->>'orgId') = $${paramIdx}::text
-      )`);
+      // Strictly scope to records belonging exclusively to the user's active organization (Milestone 1 v10 Finding #3)
+      conditions.push(`organization_id = $${paramIdx++}::uuid`);
       values.push(orgId);
-      paramIdx += 1;
     }
 
     if (options.category) {

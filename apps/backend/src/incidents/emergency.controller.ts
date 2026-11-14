@@ -24,3 +24,4 @@ export class EmergencyController {
     return this.incidentsService.updateEmergencyMode(user, body);
   }
 }
+

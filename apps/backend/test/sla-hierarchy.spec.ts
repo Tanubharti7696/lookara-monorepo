@@ -6,17 +6,18 @@ import type { JwtPayload } from '@lookara/auth';
 
 vi.mock('@lookara/database', () => ({
   query: vi.fn(),
+  getClient: vi.fn(),
 }));
 
 describe('SLA Hierarchy & Clock Inheritance (V9-02 Regression Tests)', () => {
   let tasksService: TasksService;
   let auditServiceMock: any;
-  let taskPolicyMock: any;
+  let taskPolicyMock: TaskPolicyService;
 
   const mockUser: JwtPayload = {
-    sub: 'user-pm-uuid',
-    email: 'pm@orga.com',
-    fullName: 'PM User',
+    sub: 'pm-user-1',
+    email: 'pm@lookara.test',
+    fullName: 'Test PM',
     activePortal: 'pm',
     activeOrganizationId: 'org-1-uuid',
     activeRole: 'admin',
@@ -28,6 +29,7 @@ describe('SLA Hierarchy & Clock Inheritance (V9-02 Regression Tests)', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(db.query).mockReset();
     auditServiceMock = { recordEvent: vi.fn().mockResolvedValue({ id: 'audit-1' }) };
     taskPolicyMock = new TaskPolicyService();
     tasksService = new TasksService(auditServiceMock, taskPolicyMock);
@@ -42,6 +44,8 @@ describe('SLA Hierarchy & Clock Inheritance (V9-02 Regression Tests)', () => {
     // Task Override: Escalation 20
     // Final Resolved SLA: Response 30 / Arrival 90 / Completion 300 / Escalation 20
     vi.mocked(db.query)
+      // 0. Active membership check (Finding #1)
+      .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any)
       // 1. Property validation
       .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any)
       // 2. Insert job
@@ -105,7 +109,7 @@ describe('SLA Hierarchy & Clock Inheritance (V9-02 Regression Tests)', () => {
       },
     });
 
-    const snapshotCall = vi.mocked(db.query).mock.calls[7];
+    const snapshotCall = vi.mocked(db.query).mock.calls[8];
     expect(snapshotCall).toBeDefined();
     expect(snapshotCall[1][7]).toBe('task_override'); // resolved_tier
 
@@ -132,8 +136,10 @@ describe('SLA Hierarchy & Clock Inheritance (V9-02 Regression Tests)', () => {
   });
 
   it('inherits unspecified clocks through nullish coalescing (??) when task override specifies only arrival', async () => {
-    // 1. Property check
     vi.mocked(db.query)
+      // 0. Active membership check
+      .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any)
+      // 1. Property check
       .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any)
       // 2. Insert job
       .mockResolvedValueOnce({
@@ -173,7 +179,7 @@ describe('SLA Hierarchy & Clock Inheritance (V9-02 Regression Tests)', () => {
       },
     });
 
-    const snapshotCall = vi.mocked(db.query).mock.calls[7];
+    const snapshotCall = vi.mocked(db.query).mock.calls[8];
     expect(snapshotCall[1][7]).toBe('task_override'); // resolved_tier
 
     const now = Date.now();
@@ -196,7 +202,11 @@ describe('SLA Hierarchy & Clock Inheritance (V9-02 Regression Tests)', () => {
 
   it('uniquely scopes Lookara Base default template (organization_id IS NULL AND market IS NULL)', async () => {
     vi.mocked(db.query)
-      .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any) // Property check
+      // 0. Active membership check
+      .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any)
+      // 1. Property check
+      .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any)
+      // 2. Insert job
       .mockResolvedValueOnce({
         rows: [{
           id: 'task-base-1',
@@ -206,7 +216,8 @@ describe('SLA Hierarchy & Clock Inheritance (V9-02 Regression Tests)', () => {
           severity: 'critical',
           title: 'Emergency Power Loss',
         }],
-      } as any) // Insert job
+      } as any)
+      // 3. Base template query
       .mockResolvedValueOnce({
         rows: [{
           id: 'sla-base-uuid',
@@ -219,12 +230,17 @@ describe('SLA Hierarchy & Clock Inheritance (V9-02 Regression Tests)', () => {
           escalation_mins: 20,
           verification_mins: 60,
         }],
-      } as any) // Base template query
-      .mockResolvedValueOnce({ rows: [{ market: 'Orlando', city: 'Orlando' }] } as any) // Property market query
-      .mockResolvedValueOnce({ rows: [] } as any) // No market SLA
-      .mockResolvedValueOnce({ rows: [] } as any) // No org SLA
-      .mockResolvedValueOnce({ rows: [] } as any) // No property override
-      .mockResolvedValueOnce({ rows: [] } as any); // Insert SLA snapshot
+      } as any)
+      // 4. Property market query
+      .mockResolvedValueOnce({ rows: [{ market: 'Orlando', city: 'Orlando' }] } as any)
+      // 5. No market SLA
+      .mockResolvedValueOnce({ rows: [] } as any)
+      // 6. No org SLA
+      .mockResolvedValueOnce({ rows: [] } as any)
+      // 7. No property override
+      .mockResolvedValueOnce({ rows: [] } as any)
+      // 8. Insert SLA snapshot
+      .mockResolvedValueOnce({ rows: [] } as any);
 
     await tasksService.create(mockUser, {
       propertyId: 'prop-1',
@@ -237,13 +253,55 @@ describe('SLA Hierarchy & Clock Inheritance (V9-02 Regression Tests)', () => {
     });
 
     // Check base template query SQL
-    const baseQueryCall = vi.mocked(db.query).mock.calls[2];
+    const baseQueryCall = vi.mocked(db.query).mock.calls[3];
     expect(baseQueryCall[0]).toMatch(/organization_id IS NULL AND market IS NULL/i);
     expect(baseQueryCall[0]).not.toMatch(/organization_id IS NULL OR market IS NULL/i);
 
-    const snapshotCall = vi.mocked(db.query).mock.calls[7];
+    const snapshotCall = vi.mocked(db.query).mock.calls[8];
     expect(snapshotCall[1][1]).toBe('sla-base-uuid');
     expect(snapshotCall[1][7]).toBe('lookara_base');
   });
-});
 
+  it('guarantees tenant safety for market-level templates by querying organization_id IS NULL (Finding #6)', async () => {
+    vi.mocked(db.query)
+      .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any) // Membership
+      .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any) // Property check
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'task-market-safe',
+          job_code: 'JOB-MKT-SAFE',
+          organization_id: 'org-1-uuid',
+          property_id: 'prop-1',
+          severity: 'medium',
+          title: 'Market Isolation Test',
+        }],
+      } as any) // Insert job
+      .mockResolvedValueOnce({ rows: [] } as any) // Base template
+      .mockResolvedValueOnce({ rows: [{ market: 'Austin', city: 'Austin' }] } as any) // Property market query
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sla-austin-platform',
+          market: 'Austin',
+          severity: 'medium',
+          arrival_mins: 180,
+        }],
+      } as any) // Market SLA
+      .mockResolvedValueOnce({ rows: [] } as any) // Org SLA
+      .mockResolvedValueOnce({ rows: [] } as any) // Prop override
+      .mockResolvedValueOnce({ rows: [] } as any); // Snapshot
+
+    await tasksService.create(mockUser, {
+      propertyId: 'prop-1',
+      tradeCode: 'PLUMB',
+      workflowClass: 'maintenance',
+      severity: 'medium',
+      source: 'pm_portal',
+      title: 'Market Isolation Test',
+      serviceType: 'repair',
+    });
+
+    // Check market template query SQL includes AND organization_id IS NULL
+    const marketQueryCall = vi.mocked(db.query).mock.calls[5];
+    expect(marketQueryCall[0]).toMatch(/market\s*=\s*\$1\s+AND\s+organization_id\s+IS\s+NULL/i);
+  });
+});

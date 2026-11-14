@@ -16,12 +16,8 @@ const isCloudDb =
 
 function buildSslConfig() {
   if (!isCloudDb) return undefined;
-  const rejectUnauthorized =
-    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false'
-      ? false
-      : process.env.NODE_ENV === 'production' || Boolean(process.env.DATABASE_SSL_CA);
   return {
-    rejectUnauthorized,
+    rejectUnauthorized: true,
     ...(process.env.DATABASE_SSL_CA ? { ca: process.env.DATABASE_SSL_CA } : {}),
   };
 }

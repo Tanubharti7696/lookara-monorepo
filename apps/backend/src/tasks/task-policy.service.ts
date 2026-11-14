@@ -48,6 +48,7 @@ export const ROLE_ALLOWED_TARGET_STATUSES: Record<string, string[]> = {
   pm: ['unassigned', 'dispatching', 'assigned', 'in_progress', 'verification_pending', 'completed', 'closed', 'cancelled', 'escalated'],
   admin: ['unassigned', 'dispatching', 'assigned', 'accepted', 'en_route', 'on_site', 'in_progress', 'verification_pending', 'completed', 'closed', 'cancelled', 'escalated'],
   owner: [], // Owners have read-only visibility into their properties
+  viewer: [], // Viewers have strictly read-only visibility and cannot update task statuses
 };
 
 @Injectable()
@@ -98,7 +99,7 @@ export class TaskPolicyService {
    * Enforces server-side tenant membership, property scoping, role, and vendor assignment.
    */
   async authorize(user: JwtPayload, task: TaskEntity, operation: TaskOperation): Promise<{
-    role: 'admin' | 'pm' | 'vendor' | 'owner';
+    role: 'admin' | 'pm' | 'vendor' | 'owner' | 'viewer';
     vendorId?: string;
   }> {
     if (!user || !user.sub) {
@@ -171,27 +172,29 @@ export class TaskPolicyService {
         throw new ForbiddenException(`Task ${task.job_code} does not belong to your active organization`);
       }
 
-      // Step B: Server-side validation of active membership in the organization (V9-03)
+      // Step B: Server-side validation of active membership in the organization (Finding #1 & #2)
       const membershipRes = await query(
         `SELECT role, status FROM organization_users 
          WHERE organization_id = $1 AND user_id = $2 AND status = 'active'`,
         [user.activeOrganizationId, user.sub]
       );
-      if (membershipRes?.rows) {
-        if (membershipRes.rows.length === 0) {
-          throw new ForbiddenException('User does not have an active membership in the organization');
+      if (!membershipRes || !membershipRes.rows || membershipRes.rows.length === 0) {
+        throw new ForbiddenException('User does not have an active membership in the organization');
+      }
+
+      const serverRole = membershipRes.rows[0].role;
+      // Live database role determines write permissions (Finding #2)
+      // A viewer is strictly read-only across create, update_status, cancel, verify, dispatch
+      if (serverRole === 'viewer') {
+        if (operation !== 'view' && operation !== 'view_evidence') {
+          throw new ForbiddenException(`Role "${serverRole}" is restricted to read-only access and cannot perform "${operation}"`);
         }
-        const serverRole = membershipRes.rows[0].role;
-        if ((operation === 'cancel' || operation === 'pm_verify') && serverRole === 'viewer') {
-          throw new ForbiddenException(`Role "${serverRole}" is not authorized for task operation "${operation}"`);
-        }
+        return { role: 'viewer' };
       }
 
       // Step C: Role-based operation permissions
-      if (operation === 'cancel' || operation === 'pm_verify') {
-        if (user.activeRole === 'viewer') {
-          throw new ForbiddenException(`Role "${user.activeRole}" is not authorized for task operation "${operation}"`);
-        }
+      if (user.activeRole === 'viewer' && operation !== 'view' && operation !== 'view_evidence') {
+        throw new ForbiddenException('Role "viewer" is restricted to read-only access and cannot perform task mutations');
       }
 
       return { role: 'pm' };
@@ -207,7 +210,7 @@ export class TaskPolicyService {
   validateTransition(
     currentStatus: string,
     targetStatus: string,
-    actorRole: 'admin' | 'pm' | 'vendor' | 'owner',
+    actorRole: 'admin' | 'pm' | 'vendor' | 'owner' | 'viewer',
     action?: 'vendor_decline' | 'standard'
   ): void {
     if (action === 'vendor_decline' && actorRole === 'vendor') {

@@ -12,12 +12,26 @@ export class DispatchService {
    * Find eligible vendors for a specific task based on trade match, property coverage, relationship,
    * actual verified compliance documents (no blocking unapproved/expired docs), and emergency status.
    */
-  async getCandidates(jobId: string, user: JwtPayload, specificVendorId?: string) {
+  async getCandidates(jobId: string, user: JwtPayload, specificVendorId?: string, skipAuthCheck: boolean = false) {
+    const orgId = user.activeOrganizationId;
+    if (!orgId) throw new ForbiddenException('Active organization context required');
+
+    // Live active membership check (Milestone 1 v10 Finding #1)
+    if (!skipAuthCheck) {
+      const memRes = await query(
+        `SELECT role, status FROM organization_users 
+         WHERE organization_id = $1 AND user_id = $2 AND status = 'active'`,
+        [orgId, user.sub]
+      );
+      if (!memRes || !memRes.rows || memRes.rows.length === 0) {
+        throw new ForbiddenException('User does not have an active membership in this organization');
+      }
+    }
+
     const jobRes = await query(`SELECT j.*, p.timezone AS property_timezone FROM jobs j LEFT JOIN properties p ON j.property_id = p.id WHERE j.id = $1`, [jobId]);
     if (jobRes.rows.length === 0) throw new NotFoundException('Task not found');
     const job = jobRes.rows[0];
 
-    const orgId = user.activeOrganizationId;
     if (job.organization_id !== orgId) {
       throw new ForbiddenException('You do not have access to this task');
     }
@@ -102,8 +116,28 @@ export class DispatchService {
   /**
    * Assign a vendor to a task safely with transaction isolation and row-level locking
    */
-  async assignVendor(jobId: string, vendorId: string, user: JwtPayload) {
-    const { job, candidates } = await this.getCandidates(jobId, user, vendorId);
+  async assignVendor(jobId: string, vendorId: string, user: JwtPayload, skipMembershipCheck: boolean = false) {
+    const orgId = user.activeOrganizationId;
+    if (!orgId) throw new ForbiddenException('Active organization context required');
+
+    // Live active membership and non-viewer check (Milestone 1 v10 Finding #1 & #2)
+    if (!skipMembershipCheck) {
+      const memRes = await query(
+        `SELECT role, status FROM organization_users 
+         WHERE organization_id = $1 AND user_id = $2 AND status = 'active'`,
+        [orgId, user.sub]
+      );
+      if (!memRes || !memRes.rows || memRes.rows.length === 0) {
+        throw new ForbiddenException('User does not have an active membership in this organization');
+      }
+
+      const serverRole = memRes.rows[0].role;
+      if (serverRole === 'viewer' || user.activeRole === 'viewer') {
+        throw new ForbiddenException('Role "viewer" is restricted to read-only access and cannot assign vendors');
+      }
+    }
+
+    const { job, candidates } = await this.getCandidates(jobId, user, vendorId, true);
     
     if (candidates.length === 0) {
       throw new BadRequestException('Vendor is not eligible for this task (fails property coverage, trade, verified compliance, or relationship checks)');
@@ -185,12 +219,30 @@ export class DispatchService {
    * selecting the top-ranked candidate (preferred over neutral/limited, alphabetical tie-breaker).
    */
   async autoDispatch(jobId: string, user: JwtPayload) {
-    const { candidates } = await this.getCandidates(jobId, user);
+    const orgId = user.activeOrganizationId;
+    if (!orgId) throw new ForbiddenException('Active organization context required');
+
+    // Live active membership and non-viewer check (Milestone 1 v10 Finding #1 & #2)
+    const memRes = await query(
+      `SELECT role, status FROM organization_users 
+       WHERE organization_id = $1 AND user_id = $2 AND status = 'active'`,
+      [orgId, user.sub]
+    );
+    if (!memRes || !memRes.rows || memRes.rows.length === 0) {
+      throw new ForbiddenException('User does not have an active membership in this organization');
+    }
+
+    const serverRole = memRes.rows[0].role;
+    if (serverRole === 'viewer' || user.activeRole === 'viewer') {
+      throw new ForbiddenException('Role "viewer" is restricted to read-only access and cannot dispatch tasks');
+    }
+
+    const { candidates } = await this.getCandidates(jobId, user, undefined, true);
     if (!candidates || candidates.length === 0) {
       throw new BadRequestException('No eligible vendors found matching trade, property coverage, relationship, and compliance criteria for auto-dispatch');
     }
 
     const topCandidate = candidates[0];
-    return this.assignVendor(jobId, topCandidate.id, user);
+    return this.assignVendor(jobId, topCandidate.id, user, true);
   }
 }

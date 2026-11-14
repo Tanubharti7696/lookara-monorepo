@@ -312,10 +312,12 @@ CREATE TABLE IF NOT EXISTS job_offers (
   offered_at TIMESTAMPTZ NOT NULL,
   expires_at TIMESTAMPTZ,
   responded_at TIMESTAMPTZ,
+  decline_reason TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_job_offers_job ON job_offers(job_id);
 CREATE INDEX IF NOT EXISTS idx_job_offers_vendor ON job_offers(vendor_id);
+ALTER TABLE job_offers ADD COLUMN IF NOT EXISTS decline_reason TEXT;
 
 CREATE TABLE IF NOT EXISTS job_assignments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

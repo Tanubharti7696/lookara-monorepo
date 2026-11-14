@@ -5,9 +5,21 @@ const { Pool } = require('pg');
 const connectionString =
   process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/lookara';
 
+const isCloudDb =
+  process.env.DATABASE_SSL === 'true' ||
+  (!connectionString.includes('localhost') && !connectionString.includes('127.0.0.1')) ||
+  connectionString.includes('sslmode=require') ||
+  connectionString.includes('neon.tech') ||
+  connectionString.includes('supabase');
+
 const pool = new Pool({
   connectionString,
-  ssl: { rejectUnauthorized: false },
+  ssl: isCloudDb
+    ? {
+        rejectUnauthorized: true,
+        ...(process.env.DATABASE_SSL_CA ? { ca: process.env.DATABASE_SSL_CA } : {}),
+      }
+    : undefined,
 });
 
 async function runWorkflow() {

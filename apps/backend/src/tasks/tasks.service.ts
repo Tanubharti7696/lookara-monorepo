@@ -292,6 +292,21 @@ export class TasksService {
       throw new ForbiddenException('Vendors are not authorized to create tasks');
     }
 
+    // Live active membership and role authorization (Milestone 1 v10 Finding #1 & #2)
+    const memRes = await query(
+      `SELECT role, status FROM organization_users 
+       WHERE organization_id = $1 AND user_id = $2 AND status = 'active'`,
+      [orgId, user.sub]
+    );
+    if (!memRes || !memRes.rows || memRes.rows.length === 0) {
+      throw new ForbiddenException('User does not have an active membership in this organization');
+    }
+
+    const serverRole = memRes.rows[0].role;
+    if (serverRole === 'viewer' || user.activeRole === 'viewer') {
+      throw new ForbiddenException('Role "viewer" is restricted to read-only access and cannot create tasks');
+    }
+
     if (dto.propertyId) {
       // Verify property belongs to this organization
       const propRes = await query(`SELECT id FROM properties WHERE id = $1 AND organization_id = $2`, [
@@ -389,7 +404,7 @@ export class TasksService {
       if (marketVal) {
         const marketSlaRes = await query(
           `SELECT * FROM sla_templates 
-           WHERE market = $1 AND severity = $2 
+           WHERE market = $1 AND organization_id IS NULL AND severity = $2 
            ORDER BY created_at DESC LIMIT 1`,
           [marketVal, sev]
         );
@@ -533,7 +548,7 @@ export class TasksService {
     }
 
     await this.auditService.recordEvent({
-      actorType: authContext.role,
+      actorType: authContext.role as any,
       actorUserId: user.sub,
       organizationId: task.organization_id,
       targetType: 'job',
@@ -562,8 +577,9 @@ export class TasksService {
     await query(`UPDATE jobs SET status = 'cancelled', updated_at = now() WHERE id = $1`, [id]);
     
     await this.auditService.recordEvent({
-      actorType: authContext.role,
+      actorType: authContext.role as any,
       actorUserId: user.sub,
+      organizationId: task.organization_id,
       targetType: 'job',
       targetId: id,
       category: 'task',
@@ -650,7 +666,7 @@ export class TasksService {
     const evidence = res.rows[0];
 
     await this.auditService.recordEvent({
-      actorType: authContext.role,
+      actorType: authContext.role as any,
       actorUserId: user.sub,
       organizationId: task.organization_id,
       targetType: 'job',

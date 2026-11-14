@@ -11,15 +11,11 @@ const isCloudDb =
   connectionString.includes('neon.tech') ||
   connectionString.includes('supabase');
 
-// In production cloud environments, verify TLS certificates using CA or platform defaults (V9-09)
+// Require certificate verification for all TLS database connections (Milestone 1 v10 Finding #7)
 function buildSslConfig() {
   if (!isCloudDb) return undefined;
-  const rejectUnauthorized =
-    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false'
-      ? false
-      : process.env.NODE_ENV === 'production' || Boolean(process.env.DATABASE_SSL_CA);
   return {
-    rejectUnauthorized,
+    rejectUnauthorized: true,
     ...(process.env.DATABASE_SSL_CA ? { ca: process.env.DATABASE_SSL_CA } : {}),
   };
 }

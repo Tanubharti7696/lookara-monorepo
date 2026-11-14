@@ -247,7 +247,7 @@ describe('Lookara Milestone 1 — Connected PostgreSQL End-to-End Acceptance Sui
     expect(snap.resolved_tier).toBe('task_override');
   }, 30000);
 
-  it('4. Task Permissions: re-verifies live organization_users membership and blocks suspended/revoked PM tokens', async () => {
+  it('4. Task Permissions: re-verifies live organization_users membership and blocks suspended/revoked PM tokens (Finding #1 & #2)', async () => {
     const revokedPmJwt: any = {
       sub: revokedPmUserId,
       email: `revoked.e2e.${suffix}@lookara.com`,
@@ -258,6 +258,21 @@ describe('Lookara Milestone 1 — Connected PostgreSQL End-to-End Acceptance Sui
 
     await expect(tasksService.findAll(revokedPmJwt, {})).rejects.toThrow(/revoked|inactive|disabled|Forbidden|membership/i);
     await expect(tasksService.findOne(createdJobId, revokedPmJwt)).rejects.toThrow(/revoked|inactive|disabled|Forbidden|membership/i);
+
+    // Finding #1: Task creation and dispatch must reject revoked PM
+    await expect(
+      tasksService.create(revokedPmJwt, {
+        propertyId: prop1Id,
+        title: 'Revoked PM Task Attempt',
+        tradeCode: 'HVAC',
+        workflowClass: 'maintenance',
+        severity: 'medium',
+        serviceType: 'repair',
+      })
+    ).rejects.toThrow(/membership|Forbidden/i);
+
+    await expect(dispatchService.getCandidates(createdJobId, revokedPmJwt)).rejects.toThrow(/membership|Forbidden/i);
+    await expect(dispatchService.assignVendor(createdJobId, vendor1Id, revokedPmJwt)).rejects.toThrow(/membership|Forbidden/i);
   }, 30000);
 
   it('5. Vendor Dispatch & Timezone Eligibility: filters candidates by property timezone work-hours', async () => {
@@ -334,6 +349,7 @@ describe('Lookara Milestone 1 — Connected PostgreSQL End-to-End Acceptance Sui
     );
     expect(offersAfterDecline.rows.length).toBe(1);
     expect(offersAfterDecline.rows[0].offer_status).toBe('declined');
+    expect(offersAfterDecline.rows[0].decline_reason).toBe('Technician unavailable in Miami sector');
 
     // Step C: PM dispatches Vendor 2 -> Vendor 2 accepts
     const assigned2 = await dispatchService.assignVendor(createdJobId, vendor2Id, pmJwt);

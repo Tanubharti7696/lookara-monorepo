@@ -32,6 +32,7 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(db.query).mockReset();
     auditService = new AuditService();
     vi.spyOn(auditService, 'recordEvent').mockResolvedValue(undefined as any);
     taskPolicyService = new TaskPolicyService();
@@ -83,6 +84,9 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
       // Mock candidate search
       vi.mocked(db.query)
         .mockResolvedValueOnce({
+          rows: [{ role: 'admin', status: 'active' }],
+        } as any) // assignVendor active membership check
+        .mockResolvedValueOnce({
           rows: [{ id: 'task-1', organization_id: 'org-1', property_id: 'prop-1', trade_code: 'PLUMB', severity: 'medium', job_code: 'JOB-101', status: 'unassigned' }],
         } as any)
         .mockResolvedValueOnce({
@@ -110,6 +114,9 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
 
     it('should successfully execute manual assignment within transaction and commit', async () => {
       vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ role: 'admin', status: 'active' }],
+        } as any) // assignVendor active membership check
         .mockResolvedValueOnce({
           rows: [{ id: 'task-1', organization_id: 'org-1', property_id: 'prop-1', trade_code: 'PLUMB', severity: 'medium', job_code: 'JOB-101', status: 'unassigned' }],
         } as any)
@@ -141,6 +148,9 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
 
     it('should automatically select top-ranked eligible candidate and assign in autoDispatch', async () => {
       vi.mocked(db.query)
+        .mockResolvedValueOnce({
+          rows: [{ role: 'admin', status: 'active' }],
+        } as any) // autoDispatch active membership check
         .mockResolvedValueOnce({
           rows: [{ id: 'task-1', organization_id: 'org-1', property_id: 'prop-1', trade_code: 'PLUMB', severity: 'medium', job_code: 'JOB-101', status: 'unassigned' }],
         } as any)
@@ -253,6 +263,7 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
     it('should snapshot 4 operational targets according to hierarchical resolution (Market Tier)', async () => {
       // Mock create task queries (5-tier order: Base -> Market -> Org -> Property -> Task Override)
       vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any) // -1: Active membership check
         .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any) // 0: Property check
         .mockResolvedValueOnce({
           rows: [{ id: 'task-1', job_code: 'JOB-200', organization_id: 'org-1', property_id: 'prop-1', severity: 'critical', title: 'Pipe Burst' }],
@@ -288,7 +299,7 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
       expect(task.job_code).toBe('JOB-200');
 
       // Verify snapshot query included escalation_target and resolved_tier
-      const snapshotCall = vi.mocked(db.query).mock.calls[7];
+      const snapshotCall = vi.mocked(db.query).mock.calls[8];
       expect(snapshotCall[0]).toContain('escalation_target');
       expect(snapshotCall[0]).toContain('resolved_tier');
       expect(snapshotCall[1][7]).toBe('market');
@@ -296,6 +307,7 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
 
     it('should respect Task-level SLA override with highest priority', async () => {
       vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any) // -1: Active membership check
         .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any) // 0: Property check
         .mockResolvedValueOnce({
           rows: [{ id: 'task-2', job_code: 'JOB-201', organization_id: 'org-1', property_id: 'prop-1', severity: 'critical', title: 'Overridden SLA Task' }],
@@ -323,7 +335,7 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
       });
 
       expect(task.id).toBe('task-2');
-      const snapshotCall = vi.mocked(db.query).mock.calls[6];
+      const snapshotCall = vi.mocked(db.query).mock.calls[7];
       expect(snapshotCall[1][7]).toBe('task_override');
     });
 
@@ -332,6 +344,7 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
         code: '23505',
       });
       vi.mocked(db.query)
+        .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any) // -1: Active membership check
         .mockResolvedValueOnce({ rows: [{ id: 'prop-1' }] } as any) // Property check
         .mockRejectedValueOnce(collisionError) // 1st Insert attempt collides!
         .mockResolvedValueOnce({
@@ -375,6 +388,9 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
       vi.mocked(db.query).mockReset();
       vi.mocked(db.query)
         .mockResolvedValueOnce({
+          rows: [{ role: 'admin', status: 'active' }],
+        } as any) // active membership check
+        .mockResolvedValueOnce({
           rows: [{
             id: 'task-tz-1',
             organization_id: 'org-1',
@@ -391,7 +407,7 @@ describe('Milestone 1 Architecture & Canonical Operations Unit & Service Tests',
 
       await dispatchService.getCandidates('task-tz-1', mockUser as any);
 
-      const candidateQueryCall = vi.mocked(db.query).mock.calls[1];
+      const candidateQueryCall = vi.mocked(db.query).mock.calls[2];
       expect(candidateQueryCall[0]).toContain('AT TIME ZONE $6');
       expect(candidateQueryCall[0]).toContain('va.start_time');
       expect(candidateQueryCall[0]).toContain('va.end_time');

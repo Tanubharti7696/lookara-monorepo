@@ -277,11 +277,11 @@ export class VendorsService {
 
         return { status: 'accepted', job: updatedJobRow };
       } else {
-        // Declined: Preserve full offer/decline history in job_offers before releasing active assignment (V9-11)
+        // Declined: Preserve full offer/decline history with explicit decline_reason in job_offers before releasing active assignment
         await client.query(
-          `INSERT INTO job_offers (job_id, vendor_id, phase, offer_status, offered_at, responded_at)
-           VALUES ($1, $2, 'assigned', 'declined', $3, now())`,
-          [jobId, vendorId, assignRes.rows[0].assigned_at || new Date()]
+          `INSERT INTO job_offers (job_id, vendor_id, phase, offer_status, decline_reason, offered_at, responded_at)
+           VALUES ($1, $2, 'assigned', 'declined', $3, $4, now())`,
+          [jobId, vendorId, body.declineReason || null, assignRes.rows[0].assigned_at || new Date()]
         );
         await client.query(`DELETE FROM job_assignments WHERE id = $1`, [assignRes.rows[0].id]);
         const updatedJob = await client.query(

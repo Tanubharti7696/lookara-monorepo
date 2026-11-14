@@ -119,8 +119,8 @@ describe('VendorsService - Security & Concurrency (VEND-04 with REAL TaskPolicyS
 
     expect(mockClient.query).toHaveBeenCalledWith('COMMIT');
     expect(mockClient.query).toHaveBeenCalledWith(
-      expect.stringMatching(/INSERT INTO job_offers/i),
-      expect.arrayContaining(['job-1', 'ven-1'])
+      expect.stringMatching(/INSERT INTO job_offers.*decline_reason/i),
+      expect.arrayContaining(['job-1', 'ven-1', 'Too busy'])
     );
     expect(mockAuditService.recordEvent).toHaveBeenCalledWith(expect.objectContaining({
       actorType: 'vendor',

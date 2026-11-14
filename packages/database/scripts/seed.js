@@ -14,17 +14,18 @@ const isCloudDb =
 
 function buildSslConfig() {
   if (!isCloudDb) return undefined;
-  const rejectUnauthorized =
-    process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false'
-      ? false
-      : process.env.NODE_ENV === 'production' || Boolean(process.env.DATABASE_SSL_CA);
   return {
-    rejectUnauthorized,
+    rejectUnauthorized: true,
     ...(process.env.DATABASE_SSL_CA ? { ca: process.env.DATABASE_SSL_CA } : {}),
   };
 }
 
 async function seed() {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_SEED !== 'true') {
+    console.error('[Seed] FATAL: Seed script containing demo passwords is strictly prohibited in production.');
+    process.exit(1);
+  }
+
   console.log('[Seed] Connecting to PostgreSQL at', connectionString.replace(/:[^:@]+@/, ':****@'));
   const client = new Client({
     connectionString,
