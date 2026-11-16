@@ -304,4 +304,46 @@ describe('SLA Hierarchy & Clock Inheritance (V9-02 Regression Tests)', () => {
     const marketQueryCall = vi.mocked(db.query).mock.calls[5];
     expect(marketQueryCall[0]).toMatch(/market\s*=\s*\$1\s+AND\s+organization_id\s+IS\s+NULL/i);
   });
+
+  it('guarantees property SLA overrides do not leak into organization baseline for other properties (Issue 4)', async () => {
+    vi.mocked(db.query)
+      .mockResolvedValueOnce({ rows: [{ role: 'admin', status: 'active' }] } as any) // Membership
+      .mockResolvedValueOnce({ rows: [{ id: 'prop-2' }] } as any) // Property check for Prop 2
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'task-prop2-leakcheck',
+          job_code: 'JOB-PROP2-SLA',
+          organization_id: 'org-1-uuid',
+          property_id: 'prop-2',
+          severity: 'high',
+          title: 'Property Leak Isolation Test',
+        }],
+      } as any) // Insert job
+      .mockResolvedValueOnce({ rows: [] } as any) // Base template
+      .mockResolvedValueOnce({ rows: [{ market: 'Miami', city: 'Miami' }] } as any) // Prop 2 market
+      .mockResolvedValueOnce({ rows: [] } as any) // Market SLA
+      .mockResolvedValueOnce({
+        rows: [{
+          id: 'sla-org-clean-id',
+          acknowledge_mins: 25,
+        }],
+      } as any) // Org SLA
+      .mockResolvedValueOnce({ rows: [] } as any) // Prop 2 has NO property override
+      .mockResolvedValueOnce({ rows: [] } as any); // Snapshot
+
+    await tasksService.create(mockUser, {
+      propertyId: 'prop-2',
+      tradeCode: 'HVAC',
+      workflowClass: 'maintenance',
+      severity: 'high',
+      source: 'pm_portal',
+      title: 'Property Leak Isolation Test',
+      serviceType: 'repair',
+    });
+
+    // Check Org SLA query explicitly excludes templates linked to property_sla_overrides
+    const orgQueryCall = vi.mocked(db.query).mock.calls[6];
+    expect(orgQueryCall[0]).toMatch(/organization_id\s*=\s*\$1/i);
+    expect(orgQueryCall[0]).toMatch(/id\s+NOT\s+IN\s+\(SELECT\s+sla_template_id\s+FROM\s+property_sla_overrides\)/i);
+  });
 });

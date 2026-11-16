@@ -179,11 +179,15 @@ describe('Lookara Milestone 1 — Connected PostgreSQL End-to-End Acceptance Sui
     await query(`DELETE FROM sla_templates WHERE market = $1`, [`E2E-MKT-${suffix}`]);
   });
 
-  it('1. Database Architecture: verifies all 38 canonical tables, columns, and constraints in PostgreSQL', async () => {
+  it('1. Database Architecture: verifies all 38 canonical tables, columns, constraints, unique keys, and checks in PostgreSQL', async () => {
     const result = await verifySchema();
     expect(result.tablesVerified).toBe(38);
-    expect(result.columnsVerified).toBeGreaterThanOrEqual(300);
-    expect(result.constraintsVerified).toBeGreaterThan(50);
+    expect(result.columnsVerified).toBe(408);
+    expect(result.pksVerified).toBe(38);
+    expect(result.fksVerified).toBe(71);
+    expect(result.uniqueConstraintsVerified).toBe(19);
+    expect(result.checkConstraintsVerified).toBe(47);
+    expect(result.indexesVerified).toBe(27);
   });
 
   it('2. Authentication & Security: enforces current password check and atomic token_version increment in PostgreSQL', async () => {

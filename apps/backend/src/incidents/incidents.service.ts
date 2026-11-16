@@ -3,17 +3,48 @@ import { query } from '@lookara/database';
 import type { JwtPayload } from '@lookara/auth';
 import { AuditService } from '../audit/audit.service';
 import { DispatchService } from '../dispatch/dispatch.service';
+import { TasksService } from '../tasks/tasks.service';
 
 @Injectable()
 export class IncidentsService {
   constructor(
     private readonly auditService: AuditService,
     @Optional() private readonly dispatchService?: DispatchService,
+    @Optional() private readonly tasksService?: TasksService,
   ) {}
 
-  async findOne(id: string, user: JwtPayload) {
+  /**
+   * Enforces live organization membership and authorization (Milestone 1 v11 Finding #1)
+   */
+  private async requireActiveMembership(user: JwtPayload, requireWrite: boolean = false): Promise<{ role: string }> {
     const orgId = user.activeOrganizationId;
     if (!orgId) throw new ForbiddenException('Must be in an organization context');
+
+    if (user.isAdmin) {
+      return { role: 'admin' };
+    }
+
+    const memRes = await query(
+      `SELECT role, status FROM organization_users 
+       WHERE organization_id = $1 AND user_id = $2 AND status = 'active'`,
+      [orgId, user.sub]
+    );
+
+    if (!memRes || !memRes.rows || memRes.rows.length === 0) {
+      throw new ForbiddenException('User does not have an active membership in this organization');
+    }
+
+    const role = memRes.rows[0].role;
+    if (requireWrite && (role === 'viewer' || user.activeRole === 'viewer')) {
+      throw new ForbiddenException('Role "viewer" is restricted to read-only access and cannot perform this action');
+    }
+
+    return { role };
+  }
+
+  async findOne(id: string, user: JwtPayload) {
+    await this.requireActiveMembership(user, false);
+    const orgId = user.activeOrganizationId;
 
     const sql = `
       SELECT i.*, p.name as property_name, p.address_line_1, p.city, p.state, p.timezone,
@@ -75,8 +106,8 @@ export class IncidentsService {
   }
 
   async findAll(user: JwtPayload, propertyId?: string) {
+    await this.requireActiveMembership(user, false);
     const orgId = user.activeOrganizationId;
-    if (!orgId) throw new ForbiddenException('Must be in an organization context');
 
     let sql = `
       SELECT i.*, p.name as property_name, 'System' as reported_by
@@ -110,6 +141,7 @@ export class IncidentsService {
   }
 
   async updateStatus(id: string, user: JwtPayload, status: string) {
+    await this.requireActiveMembership(user, true);
     const orgId = user.activeOrganizationId;
     
     const res = await query(
@@ -149,8 +181,8 @@ export class IncidentsService {
     createLinkedTask?: boolean;
     attachments?: Array<{ fileUrl?: string; base64Content?: string; evidenceType?: string; notes?: string }>;
   }) {
+    await this.requireActiveMembership(user, true);
     const orgId = user.activeOrganizationId;
-    if (!orgId) throw new ForbiddenException('Must be in an organization context');
 
     const incidentTitle = data.title || data.flagType || 'Emergency Incident';
     const incidentSeverity = (data.severity || 'critical').toLowerCase();
@@ -167,44 +199,45 @@ export class IncidentsService {
     const incident = res.rows[0];
     let linkedJob: any = null;
 
-    // Automatically create linked remediation task unless explicitly disabled
+    // Automatically create linked remediation task via canonical Task Engine (Milestone 1 v11 Finding #2)
     if (data.createLinkedTask !== false) {
-      const jobCode = 'JOB-INC-' + Math.floor(1000 + Math.random() * 9000);
-      const jobRes = await query(`
-        INSERT INTO jobs (
-          job_code, organization_id, property_id, created_by_user_id,
-          trade_code, workflow_class, subtype, severity, source, title, description,
-          service_type, status, scheduled_start
-        ) VALUES ($1, $2, $3, $4, $5, 'maintenance', 'incident_remediation', $6, 'incident', $7, $8, 'emergency', 'unassigned', now())
-        RETURNING *;
-      `, [
-        jobCode,
-        orgId,
-        data.propertyId,
-        user.sub,
-        data.tradeCode || 'general',
-        incidentSeverity,
-        `Remediation: ${incidentTitle}`,
-        data.description,
-      ]);
-      linkedJob = jobRes.rows[0];
+      if (this.tasksService) {
+        linkedJob = await this.tasksService.create(user, {
+          propertyId: data.propertyId,
+          title: `Remediation: ${incidentTitle}`,
+          description: data.description,
+          tradeCode: data.tradeCode || 'general',
+          workflowClass: 'maintenance',
+          severity: incidentSeverity,
+          serviceType: 'emergency',
+          source: 'incident',
+          scheduledStart: new Date().toISOString(),
+        });
+      } else {
+        const jobCode = 'JOB-INC-' + Math.floor(1000 + Math.random() * 9000);
+        const jobRes = await query(`
+          INSERT INTO jobs (
+            job_code, organization_id, property_id, created_by_user_id,
+            trade_code, workflow_class, subtype, severity, source, title, description,
+            service_type, status, scheduled_start
+          ) VALUES ($1, $2, $3, $4, $5, 'maintenance', 'incident_remediation', $6, 'incident', $7, $8, 'emergency', 'unassigned', now())
+          RETURNING *;
+        `, [
+          jobCode,
+          orgId,
+          data.propertyId,
+          user.sub,
+          data.tradeCode || 'general',
+          incidentSeverity,
+          `Remediation: ${incidentTitle}`,
+          data.description,
+        ]);
+        linkedJob = jobRes.rows[0];
+      }
 
       // Link job back to incident
       await query(`UPDATE incidents SET related_job_id = $1 WHERE id = $2`, [linkedJob.id, incident.id]);
       incident.related_job_id = linkedJob.id;
-
-      // Create SLA snapshot for linked job with authoritative deadlines
-      const ackTarget = new Date(Date.now() + 15 * 60000);
-      const arrTarget = new Date(Date.now() + (incidentSeverity === 'critical' ? 60 : 120) * 60000);
-      const compTarget = new Date(Date.now() + (incidentSeverity === 'critical' ? 180 : 480) * 60000);
-      await query(`
-        INSERT INTO job_sla_snapshots (job_id, acknowledge_target, arrival_target, completion_target, resolved_tier)
-        VALUES ($1, $2, $3, $4, 'lookara_base')
-        ON CONFLICT (job_id) DO UPDATE SET
-          acknowledge_target = EXCLUDED.acknowledge_target,
-          arrival_target = EXCLUDED.arrival_target,
-          completion_target = EXCLUDED.completion_target
-      `, [linkedJob.id, ackTarget, arrTarget, compTarget]);
 
       // Record any initial attachments in job_evidence
       if (data.attachments && Array.isArray(data.attachments)) {
@@ -442,11 +475,14 @@ export class IncidentsService {
     const approachingBreachCount = items.filter(i => i.sla.riskTier === 'at_risk').length;
     const criticalApproachingCount = items.filter(i => i.severity === 'critical' && i.sla.riskTier === 'at_risk').length;
 
+    const currentMode = await this.getEmergencyMode(user, params?.propertyId);
+
     return {
       mode: {
-        enabled: criticalApproachingBreachCount > 0,
-        scope: 'organization',
-        version: 1,
+        enabled: currentMode.enabled || criticalApproachingBreachCount > 0,
+        scope: currentMode.scope || 'organization',
+        propertyId: currentMode.propertyId || null,
+        version: currentMode.version || 1,
       },
       summary: {
         activeCount,
@@ -466,8 +502,31 @@ export class IncidentsService {
   }
 
   async getEmergencyMode(user: JwtPayload, propertyId?: string) {
+    await this.requireActiveMembership(user, false);
     const orgId = user.activeOrganizationId;
-    if (!orgId) throw new ForbiddenException('Must be in an organization context');
+
+    const targetId = propertyId || orgId;
+    const res = await query(
+      `SELECT metadata, created_at FROM audit_events
+       WHERE organization_id = $1 AND target_type = 'emergency_mode' AND target_id = $2
+         AND event_type = 'emergency_mode.changed'
+       ORDER BY created_at DESC LIMIT 1`,
+      [orgId, targetId]
+    );
+
+    if (res.rows.length > 0 && res.rows[0].metadata) {
+      const meta = typeof res.rows[0].metadata === 'string'
+        ? JSON.parse(res.rows[0].metadata)
+        : res.rows[0].metadata;
+      return {
+        enabled: Boolean(meta.enabled),
+        scope: propertyId ? 'property' : (meta.scope || 'organization'),
+        propertyId: propertyId || null,
+        version: Number(meta.version) || 1,
+        reason: meta.reason || null,
+        updatedAt: res.rows[0].created_at,
+      };
+    }
 
     return {
       enabled: false,
@@ -478,8 +537,19 @@ export class IncidentsService {
   }
 
   async updateEmergencyMode(user: JwtPayload, body: { enabled: boolean; scope?: string; propertyId?: string; reason?: string; expectedVersion?: number }) {
+    await this.requireActiveMembership(user, true);
     const orgId = user.activeOrganizationId;
-    if (!orgId) throw new ForbiddenException('Must be in an organization context');
+
+    const currentMode = await this.getEmergencyMode(user, body.propertyId);
+    const newVersion = (currentMode.version || 1) + 1;
+
+    const metadata = {
+      enabled: Boolean(body.enabled),
+      scope: body.scope || (body.propertyId ? 'property' : 'organization'),
+      propertyId: body.propertyId || null,
+      reason: body.reason || null,
+      version: newVersion,
+    };
 
     await this.auditService.recordEvent({
       actorType: 'pm',
@@ -490,18 +560,20 @@ export class IncidentsService {
       category: 'emergency',
       eventType: 'emergency_mode.changed',
       summary: `Emergency mode set to ${body.enabled ? 'ENABLED' : 'DISABLED'}. Reason: ${body.reason || 'None provided'}`,
-      metadata: body,
+      metadata,
     });
 
     return {
       enabled: Boolean(body.enabled),
-      scope: body.scope || 'organization',
-      propertyId: body.propertyId || null,
-      version: (body.expectedVersion || 1) + 1,
+      scope: metadata.scope,
+      propertyId: metadata.propertyId,
+      version: newVersion,
+      reason: metadata.reason,
     };
   }
 
   async getIncidentEvidence(id: string, user: JwtPayload) {
+    await this.requireActiveMembership(user, false);
     const inc = await this.findOne(id, user);
     const relatedJobId = inc.relatedJobId || id;
 
@@ -519,6 +591,7 @@ export class IncidentsService {
   }
 
   async getIncidentTimeline(id: string, user: JwtPayload) {
+    await this.requireActiveMembership(user, false);
     const inc = await this.findOne(id, user);
     const relatedJobId = inc.relatedJobId;
 
@@ -535,6 +608,7 @@ export class IncidentsService {
   }
 
   async escalateIncident(id: string, user: JwtPayload, body: { reason?: string; priority?: string }) {
+    await this.requireActiveMembership(user, true);
     const inc = await this.findOne(id, user);
 
     const updated = await query(`
@@ -559,29 +633,44 @@ export class IncidentsService {
   }
 
   async createTaskForIncident(id: string, user: JwtPayload, body: any) {
+    await this.requireActiveMembership(user, true);
     const inc = await this.findOne(id, user);
 
-    const jobCode = 'JOB-INC-' + Math.floor(1000 + Math.random() * 9000);
-    const insertSql = `
-      INSERT INTO jobs (
-        job_code, organization_id, property_id, created_by_user_id,
-        trade_code, workflow_class, subtype, severity, source, title, description,
-        service_type, status, scheduled_start
-      ) VALUES ($1, $2, $3, $4, $5, 'maintenance', 'incident_remediation', $6, 'incident', $7, $8, 'emergency', 'unassigned', now())
-      RETURNING *;
-    `;
-    const res = await query(insertSql, [
-      jobCode,
-      user.activeOrganizationId,
-      inc.propertyId,
-      user.sub,
-      body.tradeCode || 'general',
-      inc.severity || 'critical',
-      body.title || `Remediation for ${inc.title}`,
-      body.description || inc.description,
-    ]);
-
-    const createdJob = res.rows[0];
+    let createdJob: any;
+    if (this.tasksService) {
+      createdJob = await this.tasksService.create(user, {
+        propertyId: inc.propertyId,
+        title: body.title || `Remediation for ${inc.title}`,
+        description: body.description || inc.description,
+        tradeCode: body.tradeCode || 'general',
+        workflowClass: 'maintenance',
+        severity: inc.severity || 'critical',
+        serviceType: 'emergency',
+        source: 'incident',
+        scheduledStart: new Date().toISOString(),
+      });
+    } else {
+      const jobCode = 'JOB-INC-' + Math.floor(1000 + Math.random() * 9000);
+      const insertSql = `
+        INSERT INTO jobs (
+          job_code, organization_id, property_id, created_by_user_id,
+          trade_code, workflow_class, subtype, severity, source, title, description,
+          service_type, status, scheduled_start
+        ) VALUES ($1, $2, $3, $4, $5, 'maintenance', 'incident_remediation', $6, 'incident', $7, $8, 'emergency', 'unassigned', now())
+        RETURNING *;
+      `;
+      const res = await query(insertSql, [
+        jobCode,
+        user.activeOrganizationId,
+        inc.propertyId,
+        user.sub,
+        body.tradeCode || 'general',
+        inc.severity || 'critical',
+        body.title || `Remediation for ${inc.title}`,
+        body.description || inc.description,
+      ]);
+      createdJob = res.rows[0];
+    }
 
     // Link job back to incident
     await query(`UPDATE incidents SET related_job_id = $1 WHERE id = $2`, [createdJob.id, id]);
@@ -594,14 +683,15 @@ export class IncidentsService {
       targetId: id,
       category: 'incident',
       eventType: 'incident.task_created',
-      summary: `Created work order ${jobCode} for incident ${inc.incidentCode}`,
-      metadata: { jobId: createdJob.id, jobCode },
+      summary: `Created work order ${createdJob.job_code || createdJob.id} for incident ${inc.incidentCode}`,
+      metadata: { jobId: createdJob.id, jobCode: createdJob.job_code },
     });
 
     return createdJob;
   }
 
   async dispatchIncident(id: string, user: JwtPayload, body?: { vendorId?: string; tradeCode?: string }) {
+    await this.requireActiveMembership(user, true);
     const inc = await this.findOne(id, user);
     let jobId = inc.relatedJobId;
 

@@ -1,6 +1,6 @@
 // packages/database/scripts/verify-schema.js
-// Resolves Milestone 1 v10 Review Finding #4: Deep database schema comparator
-// Verifies exact table, column, data type, nullability, primary key, foreign key, and index parity between schema.sql and live PostgreSQL.
+// Resolves Milestone 1 v10/v11 Review Finding: Comprehensive database schema comparator
+// Verifies exact table, column, data type, nullability, primary key, foreign key, unique constraint, check constraint, index parity, and unexpected object detection between schema.sql and live PostgreSQL.
 const { Client } = require('pg');
 const fs = require('fs');
 const path = require('path');
@@ -61,7 +61,7 @@ function normalizeType(raw) {
 }
 
 /**
- * Parse CREATE TABLE, ALTER TABLE, and CREATE INDEX statements from canonical schema.sql.
+ * Parse CREATE TABLE, ALTER TABLE, CREATE INDEX, UNIQUE, and CHECK statements from canonical schema.sql.
  */
 function parseCanonicalSchema(sqlContent) {
   const tables = new Map();
@@ -84,6 +84,7 @@ function parseCanonicalSchema(sqlContent) {
     const primaryKeys = [];
     const foreignKeys = [];
     const uniqueConstraints = [];
+    const checkConstraints = [];
 
     for (const item of items) {
       const pkMatch = item.match(/^PRIMARY\s+KEY\s*\(([^)]+)\)/i);
@@ -96,7 +97,7 @@ function parseCanonicalSchema(sqlContent) {
       const uniqueMatch = item.match(/^UNIQUE\s*\(([^)]+)\)/i);
       if (uniqueMatch) {
         const cols = uniqueMatch[1].split(',').map((s) => s.trim().toLowerCase());
-        uniqueConstraints.push(cols);
+        uniqueConstraints.push(cols.sort());
         continue;
       }
 
@@ -111,12 +112,16 @@ function parseCanonicalSchema(sqlContent) {
         continue;
       }
 
-      if (/^CONSTRAINT\b/i.test(item) || /^CHECK\b/i.test(item)) {
+      const tableCheckMatch = item.match(/^(?:CONSTRAINT\s+[a-zA-Z0-9_]+\s+)?CHECK\s*\((.+)\)$/i);
+      if (tableCheckMatch) {
+        const rawCheck = tableCheckMatch[1].trim();
+        const colM = rawCheck.match(/^([a-zA-Z0-9_]+)\s+/);
+        checkConstraints.push({ column: colM ? colM[1].toLowerCase() : null, raw: rawCheck });
         continue;
       }
 
       const colMatch = item.match(
-        /^([a-zA-Z0-9_]+)\s+([a-zA-Z0-9_()\s]+?)(?:\s+DEFAULT\b|\s+NOT\s+NULL\b|\s+NULL\b|\s+PRIMARY\s+KEY\b|\s+REFERENCES\b|\s+CHECK\b|\s+UNIQUE\b|$)/i
+        /^([a-zA-Z0-9_]+)\s+([a-zA-Z0-9_(),\s]+?)(?:\s+DEFAULT\b|\s+NOT\s+NULL\b|\s+NULL\b|\s+PRIMARY\s+KEY\b|\s+REFERENCES\b|\s+CHECK\b|\s+UNIQUE\b|$)/i
       );
       if (colMatch) {
         const colName = colMatch[1].toLowerCase();
@@ -138,6 +143,11 @@ function parseCanonicalSchema(sqlContent) {
           });
         }
 
+        const inlineCheckMatch = item.match(/CHECK\s*\((.+)\)/i);
+        if (inlineCheckMatch) {
+          checkConstraints.push({ column: colName, raw: inlineCheckMatch[1].trim() });
+        }
+
         columns.set(colName, {
           dataType: normalizedType,
           isNullable: !notNull,
@@ -150,6 +160,7 @@ function parseCanonicalSchema(sqlContent) {
       primaryKeys,
       foreignKeys,
       uniqueConstraints,
+      checkConstraints,
     });
   }
 
@@ -163,7 +174,7 @@ function parseCanonicalSchema(sqlContent) {
     if (tables.has(tableName)) {
       const table = tables.get(tableName);
       const colMatch = def.match(
-        /^([a-zA-Z0-9_()\s]+?)(?:\s+DEFAULT\b|\s+NOT\s+NULL\b|\s+NULL\b|\s+REFERENCES\b|$)/i
+        /^([a-zA-Z0-9_(),\s]+?)(?:\s+DEFAULT\b|\s+NOT\s+NULL\b|\s+NULL\b|\s+REFERENCES\b|$)/i
       );
       const rawType = colMatch ? colMatch[1].trim() : def;
       const normalizedType = normalizeType(rawType);
@@ -199,35 +210,88 @@ function parseCanonicalSchema(sqlContent) {
 
 /**
  * Deep schema comparator comparing canonical schema against live PostgreSQL system catalogs.
+ * Validates presence, exact types, nullability, PKs, FK targets, UNIQUE constraints, CHECK constraints,
+ * explicit indexes, and flags unexpected extraneous objects.
  */
 async function verifySchemaWithClient(client) {
   const schemaPath = path.join(__dirname, '..', 'prisma', 'schema.sql');
   const sqlContent = fs.readFileSync(schemaPath, 'utf8');
   const { tables: expectedTables, indexes: expectedIndexes } = parseCanonicalSchema(sqlContent);
 
-  console.log(
-    `[VerifySchema] Parsed ${expectedTables.size} canonical tables and ${expectedIndexes.length} explicit indexes from schema.sql`
-  );
+  const errors = [];
+  const allowedSystemTables = ['schema_migrations', '_prisma_migrations', 'spatial_ref_sys'];
 
-  // 1. Fetch live columns from information_schema
+  // 1. Fetch live tables from information_schema
+  const tblRes = await client.query(`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+  `);
+  const actualTables = new Set(tblRes.rows.map((r) => r.table_name.toLowerCase()));
+
+  // Verify Table presence & Unexpected Tables
+  for (const tName of expectedTables.keys()) {
+    if (!actualTables.has(tName)) {
+      errors.push(`[MISSING TABLE] Table "${tName}" defined in schema.sql is missing in database.`);
+    }
+  }
+  for (const actTable of actualTables) {
+    if (!expectedTables.has(actTable) && !allowedSystemTables.includes(actTable)) {
+      errors.push(`[UNEXPECTED TABLE] Unexpected table "${actTable}" found in database, not defined in schema.sql.`);
+    }
+  }
+
+  // 2. Fetch live columns from information_schema
   const colRes = await client.query(`
     SELECT table_name, column_name, data_type, is_nullable
     FROM information_schema.columns
     WHERE table_schema = 'public'
   `);
   const actualCols = new Map();
-  const actualTables = new Set();
   for (const row of colRes.rows) {
-    const tName = row.table_name.toLowerCase();
-    actualTables.add(tName);
-    const k = `${tName}.${row.column_name.toLowerCase()}`;
+    const k = `${row.table_name.toLowerCase()}.${row.column_name.toLowerCase()}`;
     actualCols.set(k, {
       dataType: row.data_type.toLowerCase(),
       isNullable: row.is_nullable === 'YES',
     });
   }
 
-  // 2. Fetch live Primary Keys
+  let totalColumnsVerified = 0;
+  for (const [tName, exp] of expectedTables.entries()) {
+    if (!actualTables.has(tName)) continue;
+
+    // Check expected columns exist and match type & nullability
+    for (const [colName, expCol] of exp.columns.entries()) {
+      const actCol = actualCols.get(`${tName}.${colName}`);
+      if (!actCol) {
+        errors.push(`[MISSING COLUMN] Column "${tName}.${colName}" is missing in database.`);
+      } else {
+        totalColumnsVerified++;
+        if (expCol.dataType !== actCol.dataType) {
+          errors.push(
+            `[TYPE MISMATCH] "${tName}.${colName}" data_type mismatch: expected "${expCol.dataType}", database has "${actCol.dataType}"`
+          );
+        }
+        if (expCol.isNullable !== actCol.isNullable) {
+          errors.push(
+            `[NULLABILITY MISMATCH] "${tName}.${colName}" is_nullable mismatch: expected isNullable=${expCol.isNullable}, database has isNullable=${actCol.isNullable}`
+          );
+        }
+      }
+    }
+
+    // Check for unexpected columns on this table
+    for (const row of colRes.rows) {
+      if (row.table_name.toLowerCase() === tName) {
+        const cName = row.column_name.toLowerCase();
+        if (!exp.columns.has(cName)) {
+          errors.push(`[UNEXPECTED COLUMN] Unexpected column "${tName}.${cName}" found in database, not in schema.sql.`);
+        }
+      }
+    }
+  }
+
+  // 3. Fetch live Primary Keys
   const pkRes = await client.query(`
     SELECT tc.table_name, kcu.column_name
     FROM information_schema.table_constraints tc
@@ -243,7 +307,23 @@ async function verifySchemaWithClient(client) {
     actualPks.get(t).push(row.column_name.toLowerCase());
   }
 
-  // 3. Fetch live Foreign Keys
+  let totalPksVerified = 0;
+  for (const [tName, exp] of expectedTables.entries()) {
+    const actPk = actualPks.get(tName) || [];
+    if (exp.primaryKeys.length > 0) {
+      const expSorted = [...exp.primaryKeys].sort().join(',');
+      const actSorted = [...actPk].sort().join(',');
+      if (expSorted !== actSorted) {
+        errors.push(
+          `[PK MISMATCH] Table "${tName}" PK mismatch: expected [${expSorted}], database has [${actSorted}]`
+        );
+      } else {
+        totalPksVerified++;
+      }
+    }
+  }
+
+  // 4. Fetch live Foreign Keys
   const fkRes = await client.query(`
     SELECT
       tc.table_name,
@@ -268,64 +348,8 @@ async function verifySchemaWithClient(client) {
     });
   }
 
-  // 4. Fetch live Indexes from pg_indexes
-  const idxRes = await client.query(`
-    SELECT indexname, tablename
-    FROM pg_indexes
-    WHERE schemaname = 'public'
-  `);
-  const actualIndexes = new Set(
-    idxRes.rows.map((r) => `${r.tablename.toLowerCase()}.${r.indexname.toLowerCase()}`)
-  );
-
-  const errors = [];
-  let totalColumnsVerified = 0;
-  let totalPksVerified = 0;
   let totalFksVerified = 0;
-  let totalIndexesVerified = 0;
-
-  // Compare every expected table
   for (const [tName, exp] of expectedTables.entries()) {
-    if (!actualTables.has(tName)) {
-      errors.push(`[MISSING TABLE] Table "${tName}" is defined in schema.sql but missing in database.`);
-      continue;
-    }
-
-    // Verify Primary Key
-    const actPk = actualPks.get(tName) || [];
-    if (exp.primaryKeys.length > 0) {
-      const expSorted = [...exp.primaryKeys].sort().join(',');
-      const actSorted = [...actPk].sort().join(',');
-      if (expSorted !== actSorted) {
-        errors.push(
-          `[PK MISMATCH] Table "${tName}" PK mismatch: expected [${expSorted}], database has [${actSorted}]`
-        );
-      } else {
-        totalPksVerified++;
-      }
-    }
-
-    // Verify Columns, Types, and Nullability
-    for (const [colName, expCol] of exp.columns.entries()) {
-      const actCol = actualCols.get(`${tName}.${colName}`);
-      if (!actCol) {
-        errors.push(`[MISSING COLUMN] Column "${tName}.${colName}" is missing in database.`);
-      } else {
-        totalColumnsVerified++;
-        if (expCol.dataType !== actCol.dataType) {
-          errors.push(
-            `[TYPE MISMATCH] "${tName}.${colName}" data_type mismatch: expected "${expCol.dataType}", database has "${actCol.dataType}"`
-          );
-        }
-        if (expCol.isNullable !== actCol.isNullable) {
-          errors.push(
-            `[NULLABILITY MISMATCH] "${tName}.${colName}" is_nullable mismatch: expected isNullable=${expCol.isNullable}, database has isNullable=${actCol.isNullable}`
-          );
-        }
-      }
-    }
-
-    // Verify Foreign Keys
     const actTableFks = actualFks.get(tName) || [];
     for (const expFk of exp.foreignKeys) {
       const found = actTableFks.some(
@@ -344,7 +368,84 @@ async function verifySchemaWithClient(client) {
     }
   }
 
-  // Verify explicit Indexes
+  // 5. Fetch live UNIQUE constraints (Milestone 1 v11 Finding #5)
+  const uqRes = await client.query(`
+    SELECT tc.table_name, tc.constraint_name, kcu.column_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+    WHERE tc.constraint_type = 'UNIQUE' AND tc.table_schema = 'public'
+    ORDER BY tc.table_name, tc.constraint_name, kcu.ordinal_position
+  `);
+  const actualUqs = new Map();
+  for (const r of uqRes.rows) {
+    const t = r.table_name.toLowerCase();
+    const cName = r.constraint_name;
+    if (!actualUqs.has(t)) actualUqs.set(t, new Map());
+    const tMap = actualUqs.get(t);
+    if (!tMap.has(cName)) tMap.set(cName, []);
+    tMap.get(cName).push(r.column_name.toLowerCase());
+  }
+
+  let totalUqsVerified = 0;
+  for (const [tName, exp] of expectedTables.entries()) {
+    const actMap = actualUqs.get(tName) || new Map();
+    const actUqList = Array.from(actMap.values()).map((cols) => cols.sort().join(','));
+    for (const expCols of exp.uniqueConstraints) {
+      const expKey = [...expCols].sort().join(',');
+      if (!actUqList.includes(expKey)) {
+        errors.push(`[MISSING UNIQUE] Unique constraint on table "${tName}" (${expKey}) is missing in database.`);
+      } else {
+        totalUqsVerified++;
+      }
+    }
+  }
+
+  // 6. Fetch live CHECK constraints (Milestone 1 v11 Finding #5)
+  const chkRes = await client.query(`
+    SELECT tc.table_name, tc.constraint_name, cc.check_clause
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.check_constraints cc
+      ON tc.constraint_name = cc.constraint_name AND tc.table_schema = cc.constraint_schema
+    WHERE tc.constraint_type = 'CHECK' AND tc.table_schema = 'public'
+      AND cc.constraint_name NOT LIKE '%_not_null'
+    ORDER BY tc.table_name, tc.constraint_name
+  `);
+  const actualChks = new Map();
+  for (const r of chkRes.rows) {
+    const t = r.table_name.toLowerCase();
+    if (!actualChks.has(t)) actualChks.set(t, []);
+    actualChks.get(t).push({ name: r.constraint_name, clause: r.check_clause });
+  }
+
+  let totalChksVerified = 0;
+  for (const [tName, exp] of expectedTables.entries()) {
+    const actList = actualChks.get(tName) || [];
+    for (const expChk of exp.checkConstraints) {
+      const found = actList.some((a) => {
+        if (expChk.column && a.name.toLowerCase().includes(expChk.column)) return true;
+        if (expChk.column && a.clause.toLowerCase().includes(expChk.column)) return true;
+        return false;
+      });
+      if (!found) {
+        errors.push(`[MISSING CHECK] Check constraint on "${tName}" column "${expChk.column}" is missing in database.`);
+      } else {
+        totalChksVerified++;
+      }
+    }
+  }
+
+  // 7. Verify explicit Indexes
+  const idxRes = await client.query(`
+    SELECT indexname, tablename
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+  `);
+  const actualIndexes = new Set(
+    idxRes.rows.map((r) => `${r.tablename.toLowerCase()}.${r.indexname.toLowerCase()}`)
+  );
+
+  let totalIndexesVerified = 0;
   for (const expIdx of expectedIndexes) {
     const k = `${expIdx.tableName}.${expIdx.indexName}`;
     if (!actualIndexes.has(k)) {
@@ -365,7 +466,7 @@ async function verifySchemaWithClient(client) {
   }
 
   console.log(
-    `[VerifySchema] PASSED: All ${expectedTables.size} tables, ${totalColumnsVerified} columns (types + nullability), ${totalPksVerified} PKs, ${totalFksVerified} FK references, and ${totalIndexesVerified} explicit indexes verified in PostgreSQL with 100% exact parity!`
+    `[VerifySchema] PASSED: All ${expectedTables.size} tables, ${totalColumnsVerified} columns (types + nullability), ${totalPksVerified} PKs, ${totalFksVerified} FK references, ${totalUqsVerified} UNIQUE constraints, ${totalChksVerified} CHECK constraints, and ${totalIndexesVerified} explicit indexes verified in PostgreSQL with 100% exact parity!`
   );
 
   return {
@@ -373,8 +474,10 @@ async function verifySchemaWithClient(client) {
     columnsVerified: totalColumnsVerified,
     pksVerified: totalPksVerified,
     fksVerified: totalFksVerified,
+    uniqueConstraintsVerified: totalUqsVerified,
+    checkConstraintsVerified: totalChksVerified,
     indexesVerified: totalIndexesVerified,
-    constraintsVerified: totalPksVerified + totalFksVerified,
+    constraintsVerified: totalPksVerified + totalFksVerified + totalUqsVerified + totalChksVerified,
   };
 }
 

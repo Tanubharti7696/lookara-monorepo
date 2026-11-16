@@ -405,6 +405,7 @@ export class TasksService {
         const marketSlaRes = await query(
           `SELECT * FROM sla_templates 
            WHERE market = $1 AND organization_id IS NULL AND severity = $2 
+             AND id NOT IN (SELECT sla_template_id FROM property_sla_overrides)
            ORDER BY created_at DESC LIMIT 1`,
           [marketVal, sev]
         );
@@ -421,11 +422,12 @@ export class TasksService {
       }
     }
 
-    // Level 3: Organization Tier
+    // Level 3: Organization Tier (Must NOT be tied to any property-specific override)
     if (orgId) {
       const orgSlaRes = await query(
         `SELECT * FROM sla_templates 
          WHERE organization_id = $1 AND severity = $2 
+           AND id NOT IN (SELECT sla_template_id FROM property_sla_overrides)
          ORDER BY created_at DESC LIMIT 1`,
         [orgId, sev]
       );
@@ -441,13 +443,15 @@ export class TasksService {
       }
     }
 
-    // Level 4: Property Override Tier
+    // Level 4: Property Override Tier (Applies strictly to this property)
     if (dto.propertyId) {
       const propOverrideRes = await query(
         `SELECT st.* FROM sla_templates st
          JOIN property_sla_overrides pso ON st.id = pso.sla_template_id
-         WHERE pso.property_id = $1 LIMIT 1`,
-        [dto.propertyId]
+         WHERE pso.property_id = $1 AND (st.severity = $2 OR st.severity IS NULL)
+         ORDER BY (CASE WHEN st.severity = $2 THEN 1 ELSE 2 END) ASC
+         LIMIT 1`,
+        [dto.propertyId, sev]
       );
       if (propOverrideRes && propOverrideRes.rows && propOverrideRes.rows.length > 0) {
         const propRow = propOverrideRes.rows[0];
